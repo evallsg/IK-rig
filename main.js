@@ -38,7 +38,7 @@ class App {
     init() {
         this.initScene();
 
-        this.loadAvatar(this.sourceName + ".gltf", this.sourceName, () => {
+        this.loadAvatar("./data/" + this.sourceName + ".gltf", this.sourceName, () => {
 
             // this.initRig(this.sourceName, true);
             const source = this.loadedCharacters[this.sourceName];
@@ -49,7 +49,7 @@ class App {
             IKCompute.run(rig, source.IKPose);
             IKVisualize.run(rig, source.IKPose, this.scene);
 
-            this.loadAvatar(this.targetName + ".gltf", this.targetName, () => {
+            this.loadAvatar("./data/" +this.targetName + ".gltf", this.targetName, () => {
                 this.loadedCharacters[this.targetName].model.position.x = 1;
                 //this.initRig(this.targetName, false);
                 const current = this.loadedCharacters[this.targetName];
