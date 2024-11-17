@@ -47,7 +47,7 @@ class App {
             source.IKPose = new IKPose();
             source.IKrig = rig;
             IKCompute.run(rig, source.IKPose);
-            // IKVisualize.run(rig, source.IKPose, this.scene, this.sourceName);
+            IKVisualize.run(rig, source.IKPose, this.scene, this.sourceName);
 
             this.loadAvatar("./data/" +this.targetName + ".gltf", this.targetName, () => {
                 this.loadedCharacters[this.targetName].model.position.x = 1;
@@ -71,15 +71,15 @@ class App {
                     // .set_leg_lmt( null, -0.1 )
                 }
                 current.IKPose = new IKPose();
-                // IKCompute.run(rig, current.IKPose);
-
+                
                 current.IKrig = rig;
-
+                
                 source.IKPose.applyRig(rig, current.IKPose);
-                if(rig.ikSolver) {
-                    rig.ikSolver.update();
-                }
-                // IKVisualize.run(rig, current.IKPose, this.scene, this.targetName);
+                IKCompute.run(rig, current.IKPose);
+                // if(rig.ikSolver) {
+                //     rig.ikSolver.update();
+                // }
+                IKVisualize.run(rig, current.IKPose, this.scene, this.targetName);
                 this.animate();
             })
         },);
@@ -218,7 +218,7 @@ class App {
             if(glb.animations.length) {
                 this.mixer = new THREE.AnimationMixer(skeleton.bones[0]);
                 this.mixer.clipAction(glb.animations[0]).setEffectiveWeight(1.0).play();
-                this.mixer.update(0.01);
+                this.mixer.update(0.1);
             }
 
             this.scene.add(model);
@@ -248,18 +248,20 @@ class App {
     }
 
     update(dt) {
-        if(this.mixer) {
-            this.mixer.update(dt*0.5);
-            IKCompute.run(this.loadedCharacters[this.sourceName].IKrig, this.loadedCharacters[this.sourceName].IKPose);
-            IKVisualize.run(this.loadedCharacters[this.sourceName].IKrig, this.loadedCharacters[this.sourceName].IKPose, this.scene, this.sourceName);
-            this.loadedCharacters[this.sourceName].IKPose.applyRig(this.loadedCharacters[this.targetName].IKrig);
+        // if(this.mixer) {
+        //     this.mixer.update(dt*0.5);
+        //     IKCompute.run(this.loadedCharacters[this.sourceName].IKrig, this.loadedCharacters[this.sourceName].IKPose);
+        //     IKVisualize.run(this.loadedCharacters[this.sourceName].IKrig, this.loadedCharacters[this.sourceName].IKPose, this.scene, this.sourceName);
+        //     // this.loadedCharacters[this.sourceName].IKPose.applyRig(this.loadedCharacters[this.targetName].IKrig);
            
-            if(this.loadedCharacters[this.targetName].IKrig.ikSolver) {
-                this.loadedCharacters[this.targetName].IKrig.ikSolver.update();
-            }
-            IKVisualize.run(this.loadedCharacters[this.targetName].IKrig, this.loadedCharacters[this.targetName].IKPose, this.scene, this.targetName);
+        //     if(this.loadedCharacters[this.targetName].IKrig.ikSolver) {
+        //         this.loadedCharacters[this.targetName].IKrig.ikSolver.update();
+        //     }
+        //     IKCompute.run(this.loadedCharacters[this.targetName].IKrig, this.loadedCharacters[this.targetName].IKPose);
 
-        }
+        //     IKVisualize.run(this.loadedCharacters[this.targetName].IKrig, this.loadedCharacters[this.targetName].IKPose, this.scene, this.targetName);
+
+        // }
     }
 }
 
@@ -539,7 +541,10 @@ class IKPose {
         this.leftLeg =  {lengthScale: 0, direction: new THREE.Vector3(), jointDirection: new THREE.Vector3()}
         this.rightLeg = {lengthScale: 0, direction: new THREE.Vector3(), jointDirection: new THREE.Vector3()}
         this.leftArm =  {lengthScale: 0, direction: new THREE.Vector3(), jointDirection: new THREE.Vector3()}
-        this.rightArm = {lengthScale: 0, direction: new THREE.Vector3(), jointDirection: new THREE.Vector3()}          
+        this.rightArm = {lengthScale: 0, direction: new THREE.Vector3(), jointDirection: new THREE.Vector3()}    
+        
+        this.leftFoot = {look: new THREE.Vector3(), twist: new THREE.Vector3()};
+        this.rightFoot = {look: new THREE.Vector3(), twist: new THREE.Vector3()};
     }
 
     applyRig( rig, pose ) {
@@ -548,6 +553,9 @@ class IKPose {
         this.applyLimb(rig, rig.chains.leg_r, this.rightLeg);
         this.applyLimb(rig, rig.chains.arm_l, this.leftArm);
         this.applyLimb(rig, rig.chains.arm_r, this.rightArm);
+
+        this.applyLookTwist( rig, rig.points.foot_l, this.leftFoot, FORWARD, UP );
+        this.applyLookTwist( rig, rig.points.foot_r, this.rightFoot, FORWARD, UP );
     }
 
     applyHip(rig) {
@@ -603,10 +611,48 @@ class IKPose {
         const len = (rig.leg_len_lmt || chain.length) * limb.lengthScale;
         // Pass into the target, which does a some pre computations
         chain.target.position.copy(limb.direction.normalize()).multiplyScalar(len).add(rootWorldPos);
-        // chain.target.position.copy(rootWorldPos).add(limb.direction)
+
         if(!rig.ikSolver) {
             chain.ikSolver.solve(rig.pose, limb.direction, limb.jointDirection);
         }
+    }
+
+    applyLookTwist( rig, boneInfo, ik, look, twist ) {
+
+        const bind = rig.tpose.bones[ boneInfo.idx ];
+        const pose = rig.pose.bones[ boneInfo.idx ];
+
+        let poseParentRot = pose.getWorldQuaternion(new THREE.Quaternion());
+        if(rig.pose.transformsWorldEmbedded) {
+            poseParentRot.premultiply(rig.pose.transformsWorldEmbedded.forward.q)
+        }
+
+        let bindRot = bind.getWorldQuaternion(new THREE.Quaternion());
+        if(rig.tpose.transformsWorldEmbedded) {
+            bindRot.premultiply(rig.tpose.transformsWorldEmbedded.forward.q)
+        }
+
+        // Compute the bone rotation if it doesn't have any animated rotation
+        let rotation = poseParentRot.clone().multiply(bind.quaternion);
+
+        const invRot = bindRot.clone().invert();
+        const altLookDir = look.clone().applyQuaternion(invRot);
+        const altTwistDirection = twist.clone().applyQuaternion(invRot);
+        
+        //After the HIP was moved and the Limb IK is complete, this is where alternative Look Direction currently points to.
+        const currentLook = altLookDir.clone().applyQuaternion(rotation).normalize();
+
+        // Apply the final rotation to the bone to get it pointing at the right direction and twisted to match the original animation
+        let swing = new THREE.Quaternion().setFromUnitVectors(currentLook, ik.look); // Compute swing rotation
+        swing.multiply(rotation); // Apply swing to the bone rotation
+
+        // Compute Twist Direction after swing rotation has been applied. Then use it to compute our twist rotation.
+		const currentTwist = altTwistDirection.applyQuaternion(swing).normalize();
+		const twistRot = new THREE.Quaternion().setFromUnitVectors( currentTwist, ik.twist );
+		swing.premultiply( twistRot );	// Apply Twist
+
+        swing.premultiply( poseParentRot.invert() ); // Convert to LS
+		// pose.quaternion.copy(swing );
     }
 }
 
@@ -614,13 +660,15 @@ class IKCompute {
 
     static run(rig, ikPose) {
         this.rig = rig;
-        // rig.pose.updateWorld(); // Compute WS transforms for all the bones
        
         this.hip(rig, ikPose);
         this.limb(rig.pose, rig.chains.leg_l, ikPose.leftLeg);
         this.limb(rig.pose, rig.chains.leg_r, ikPose.rightLeg);
         this.limb(rig.pose, rig.chains.arm_l, ikPose.leftArm);
         this.limb(rig.pose, rig.chains.arm_r, ikPose.rightArm);
+
+        this.lookTwist( rig, rig.points.foot_l, ikPose.leftFoot, FORWARD, UP ); // Look = Forward, Twist = Up
+        this.lookTwist( rig, rig.points.foot_r, ikPose.rightFoot, FORWARD, UP );
     }
 
     static hip(rig, ikPose) {
@@ -710,14 +758,45 @@ class IKCompute {
         const jointDir = chain.alt_up.clone().applyQuaternion(rootRot).normalize(); //get direction of the joint rotating the UP vector
         const leftDir = new THREE.Vector3();
         leftDir.crossVectors(jointDir, direction); // compute LEFT vector tp realign UP
-        ikLimb.jointDirection.crossVectors(direction, leftDir).normalize(); // recompute UP, make it orthogonal to LEFT and FORWARD
+        ikLimb.jointDirection.crossVectors(direction, leftDir).normalize(); // recompute UP, make it orthogonal to LEFT and FORWARD       
+    }
 
-        ikLimb.toVisualize = {};
-        ikLimb.toVisualize.pos = rootPos;
-        ikLimb.toVisualize.jointDir = (jointDir);
-        ikLimb.toVisualize.leftDir = (leftDir);        
-        ikLimb.toVisualize.chainDir = (direction);        
-        ikLimb.toVisualize.newJointDir = (ikLimb.jointDirection);        
+    static lookTwist(rig, boneInfo, ik, lookDirection, twistDirection) {
+        const bind = rig.tpose.bones[boneInfo.idx]; // TPose bone
+        const pose = rig.pose.bones[boneInfo.idx]; // Current Pose bone
+
+        // Get WS rotation of bone in bind pose
+        let bindRot = bind.getWorldQuaternion(new THREE.Quaternion());
+        if(rig.tpose.transformsWorldEmbedded) {
+            bindRot.premultiply(rig.tpose.transformsWorldEmbedded.forward.q);
+        }
+
+        // Get WS rotation of bone in current pose
+        let poseRot = pose.getWorldQuaternion(new THREE.Quaternion());
+        let posePos = pose.getWorldPosition(new THREE.Vector3());
+        if(rig.pose.transformsWorldEmbedded) {
+            poseRot.premultiply(rig.pose.transformsWorldEmbedded.forward.q);
+            let cmat = new THREE.Matrix4().compose(rig.pose.transformsWorldEmbedded.forward.p, rig.pose.transformsWorldEmbedded.forward.q, rig.pose.transformsWorldEmbedded.forward.s);
+            let mat = pose.matrixWorld.clone();
+            mat.premultiply(cmat);
+            mat.decompose(posePos, new THREE.Quaternion(), new THREE.Vector3());
+        }
+
+        // Look dir = Forward (follow the bone), Twist dir = Up
+        const invRot = bindRot.invert();
+        const altLookDir = lookDirection.clone().applyQuaternion(invRot);
+        const altTwistDirection = twistDirection.clone().applyQuaternion(invRot);
+
+        const poseLookDirection = altLookDir.applyQuaternion(poseRot);
+        const poseTwistDirection = altTwistDirection.applyQuaternion(poseRot);
+
+        ik.toVisualize = {
+            pos: pose.getWorldPosition(new THREE.Vector3()),
+            lookDir:lookDirection,
+            twist: twistDirection
+        }
+        ik.look.copy(poseLookDirection);
+        ik.twist.copy(poseTwistDirection);
     }
 }
 
@@ -728,6 +807,8 @@ class IKVisualize {
         this.limb(ikRig, ikRig.chains, "leg_r", ik.rightLeg, scene, name);
         this.limb(ikRig, ikRig.chains, "arm_l", ik.leftArm, scene, name);
         this.limb(ikRig, ikRig.chains, "arm_r", ik.rightArm, scene, name);
+        this.foot(ikRig, ikRig.points.foot_l, "foot_l", ik.leftFoot, scene, name);
+        this.foot(ikRig, ikRig.points.foot_r, "foot_r", ik.rightFoot, scene, name);
     }
 
     static hip(ikRig, ik, scene, name) {
@@ -780,6 +861,7 @@ class IKVisualize {
 
         const bones = chains[chainName].bones;
         ikRig.pose.bones[bones[0].idx].getWorldPosition(firstSphere.position); //First bone
+       
         let lastPos = ik.direction.clone();
         lastPos.multiplyScalar(len).add(firstSphere.position);
         lastSphere.position.copy(lastPos);
@@ -820,7 +902,10 @@ class IKVisualize {
             scene.add(target);
         }
         target.position.copy(chains[chainName].target.position);
-
+        if(name == 'vegeta') {
+          target.position.x+=1+ikRig.pose.bones[0].position.x;
+          target.position.z+= ikRig.pose.bones[0].position.z;
+        }
         // let arrow = new THREE.ArrowHelper( ik.toVisualize.jointDir, ik.toVisualize.pos, len, "white", 0.01 );
         // scene.add(arrow);
         // arrow = new THREE.ArrowHelper( ik.toVisualize.leftDir, ik.toVisualize.pos, len, "orange", 0.01 );
@@ -828,6 +913,62 @@ class IKVisualize {
         // arrow = new THREE.ArrowHelper( ik.toVisualize.chainDir, ik.toVisualize.pos, len, "yellow", 0.01 );
         // scene.add(arrow);
         // arrow = new THREE.ArrowHelper( ik.toVisualize.newJointDir, ik.toVisualize.pos, len, "red", 0.01 );
+        // scene.add(arrow);
+    }
+
+    static foot(ikRig, boneInfo, chainName, ik, scene, name) {
+
+        let sphere = scene.getObjectByName("sphere_" + chainName + "_" + name);
+        if(!sphere) {
+            const geometry = new THREE.SphereGeometry( 0.02, 10, 10 ); 
+            const material = new THREE.MeshBasicMaterial( { color: "cyan", depthTest: false} ); 
+            sphere = new THREE.Mesh( geometry, material ); 
+            sphere.name = "sphere_" + chainName + "_" + name;
+            scene.add(sphere);
+        }
+
+        ikRig.pose.bones[boneInfo.idx].getWorldPosition(sphere.position);
+
+        let arrowHelper = scene.getObjectByName("look" + chainName + "_" + name);
+        if(!arrowHelper) {
+            arrowHelper = new THREE.ArrowHelper( ik.look, sphere.position, 0.2, "blue" );
+            arrowHelper.line.material = new THREE.LineDashedMaterial({color: "blue", scale: 1, dashSize: 0.1, gapSize: 0.1, depthTest:false})
+            arrowHelper.line.computeLineDistances();   
+            arrowHelper.name = "look" + chainName + "_" + name;
+            scene.add(arrowHelper);
+        }
+        else {
+            arrowHelper.setDirection(ik.look);
+            arrowHelper.position.copy(sphere.position);
+        }
+
+        arrowHelper = scene.getObjectByName("twist" + chainName + "_" + name);
+        if(!arrowHelper) {
+            arrowHelper = new THREE.ArrowHelper( ik.twist, sphere.position, 0.2, "cyan" );
+            arrowHelper.line.material = new THREE.LineDashedMaterial({color: "cyan", scale: 1, dashSize: 0.1, gapSize: 0.1, depthTest:false})
+            arrowHelper.line.computeLineDistances();   
+            arrowHelper.name = "twist" + chainName + "_" + name;
+            scene.add(arrowHelper);
+        }
+        else {
+            arrowHelper.setDirection(ik.twist);
+            arrowHelper.position.copy(sphere.position);
+        }
+
+        if(!ikRig.toVisualize)
+            return;
+
+        // const len = 1;
+        // let arrow = new THREE.ArrowHelper( ik.toVisualize.lookDir, ik.toVisualize.pos, len, "white", 0.01 );
+        // scene.add(arrow);
+
+        // arrow = new THREE.ArrowHelper( ik.toVisualize.twistDir, ik.toVisualize.pos, len, "white", 0.01 );
+        // scene.add(arrow);
+
+        // arrow = new THREE.ArrowHelper( ik.look, ik.toVisualize.pos, len, "orange", 0.01 );
+        // scene.add(arrow);
+
+        // arrow = new THREE.ArrowHelper( ik.twist, ik.toVisualize.pos, len, "orange", 0.01 );
         // scene.add(arrow);
     }
 }
