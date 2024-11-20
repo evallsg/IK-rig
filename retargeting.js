@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+//import { normalize } from 'three/src/math/MathUtils.js';
+
 
 // asymetric and/or negative scaling of objects is not properly supported 
 class AnimationRetargeting {
@@ -48,7 +50,7 @@ class AnimationRetargeting {
         "LHandThumb":     "lefthandthumb1",
         "LHandThumb2":    "lefthandthumb2",
         "LHandThumb3":    "lefthandthumb3",
-        "LHandThumb4":    "lefthandthumb14",
+        "LHandThumb4":    "lefthandthumb4",
         "LHandIndex":     "lefthandindex1",
         "LHandIndex2":    "lefthandindex2",
         "LHandIndex3":    "lefthandindex3",
@@ -624,7 +626,7 @@ function applyTPose(skeleton, map) {
     
     // Compute perpendicular axis between left leg and left foot
     leftLegBasePos = leftLegEnd.getWorldPosition(new THREE.Vector3());
-    let child = leftLegEnd.children[0].children[0];
+    let child = leftLegEnd.children[0].children.length ? leftLegEnd.children[0].children[0] : leftLegEnd.children[0];
     let childPos = child.getWorldPosition(new THREE.Vector3());  
 
     // Compute leg direction (foot-to-footend)
@@ -697,7 +699,7 @@ function applyTPose(skeleton, map) {
 
     // Compute perpendicular axis between right leg and right foot
     rightLegBasePos = rightLegEnd.getWorldPosition(new THREE.Vector3());
-    child = rightLegEnd.children[0].children[0];
+    child = rightLegEnd.children[0].children.length ? rightLegEnd.children[0].children[0] : rightLegEnd.children[0];
     childPos = child.getWorldPosition(new THREE.Vector3());  
 
     // Compute leg direction (foot-to-footend)
@@ -757,7 +759,22 @@ function applyTPose(skeleton, map) {
         parent = leftBase.parent;
     }
 
+    leftEnd = resultSkeleton.getBoneByName(map.LWrist);
+    const innerLoop = (parent) => {
+        child = parent.children[0];
+        while(parent.children.length) {
+            let pos = child.getWorldPosition(new THREE.Vector3());
+            let parentPos = parent.getWorldPosition(new THREE.Vector3());  
 
+            alignBoneToAxis(parent, xAxis);
+            parent = child;
+            child = parent.children[0];
+        }
+    }
+    for(let i = 0; i < leftEnd.children.length; i++) {
+        innerLoop(leftEnd.children[i]);
+    }
+   
     //RIGHT
     // Check if right arm follow the -X axis
    let rArm = resultSkeleton.getBoneByName(map.RArm).parent;
@@ -779,6 +796,12 @@ function applyTPose(skeleton, map) {
        rightBase = rightBase.parent; 
        parent = rightBase.parent;
    }
+
+    rightEnd = resultSkeleton.getBoneByName(map.RWrist);
+
+    for(let i = 0; i < rightEnd.children.length; i++) {
+        innerLoop(rightEnd.children[i]);
+    }
 
     // resultSkeleton.calculateInverses();
     resultSkeleton.update(); 
