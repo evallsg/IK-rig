@@ -10,8 +10,8 @@ class App {
         this.clock = new THREE.Clock();
         this.loaderGLB = new GLTFLoader();
         this.loadedCharacters = {};
-        this.sourceName = "Catwalk.gltf";
-        this.targetName = "Eva_Low.glb";
+        this.sourceName = "bmlTest.glb";
+        this.targetName = "Ada.glb";
 
         this.playing = false;
     }
@@ -24,7 +24,7 @@ class App {
             // this.initRig(this.sourceName, true);
             const source = this.loadedCharacters[this.sourceName];
             let rig = new IKRig();
-            rig.init(source.skeleton, true, true);
+            rig.init(source.skeleton, true, false);
             source.IKPose = new IKPose();
             source.IKrig = rig;
             IKCompute.run(rig, source.IKPose);
@@ -227,18 +227,18 @@ class App {
             skeleton.pose();
 
             if(useAnimations && glb.animations.length) {
-                let tracks = [];
-                let names = ["RightHandThumb1", "RightHandThumb2", "RightHandThumb3", "RightHandIndex1", "RightHandIndex2", "RightHandIndex3", "RightHandMiddle1", "RightHandMiddle2", "RightHandMiddle3", "RightHandRing1", "RightHandRing2", "RightHandRing3",  "RightHandPinky1", "RightHandPinky2", "RightHandPinky3"]
-                for(let i = 0; i < glb.animations[0].tracks.length; i++) {
-                    for(let j = 0; j < names.length; j++) {
-                        if(glb.animations[0].tracks[i].name.includes(names[j])) {
-                            tracks.push(glb.animations[0].tracks[i]);
-                            break;
-                        }
+                // let tracks = [];
+                // let names = ["RightHandThumb1", "RightHandThumb2", "RightHandThumb3", "RightHandIndex1", "RightHandIndex2", "RightHandIndex3", "RightHandMiddle1", "RightHandMiddle2", "RightHandMiddle3", "RightHandRing1", "RightHandRing2", "RightHandRing3",  "RightHandPinky1", "RightHandPinky2", "RightHandPinky3"]
+                // for(let i = 0; i < glb.animations[0].tracks.length; i++) {
+                //     for(let j = 0; j < names.length; j++) {
+                //         if(glb.animations[0].tracks[i].name.includes(names[j])) {
+                //             tracks.push(glb.animations[0].tracks[i]);
+                //             break;
+                //         }
 
-                    }
-                }
-                glb.animations[0].tracks = tracks;
+                //     }
+                // }
+                // glb.animations[0].tracks = tracks;
                 this.mixer = new THREE.AnimationMixer(skeleton.bones[0]);
                 this.mixer.clipAction(glb.animations[0]).setEffectiveWeight(1.0).play();
                 this.mixer.update(0.1);
