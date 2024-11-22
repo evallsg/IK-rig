@@ -56,6 +56,7 @@ class IKRig {
         this.skeleton = skeleton;
         let mode = 0;
         if(forceTpose) {
+            skeleton.pose();
             skeleton = applyTPose(skeleton).skeleton;
             mode = 1;
         }
@@ -326,8 +327,8 @@ class IKPose {
         // jointDirection: for IK, is UP (direction of the limb (knee or elbow))
         this.leftLeg =  {lengthScale: 0, direction: new THREE.Vector3(), jointDirection: new THREE.Vector3()}
         this.rightLeg = {lengthScale: 0, direction: new THREE.Vector3(), jointDirection: new THREE.Vector3()}
-        this.leftArm =  {lengthScale: 0, direction: new THREE.Vector3(), jointDirection: new THREE.Vector3()}
-        this.rightArm = {lengthScale: 0, direction: new THREE.Vector3(), jointDirection: new THREE.Vector3()}    
+        this.leftArm =  {lengthScale: 0, direction: new THREE.Vector3(), jointDirection: new THREE.Vector3(), childDirection: new THREE.Vector3(), childJointDirection: new THREE.Vector3()}
+        this.rightArm = {lengthScale: 0, direction: new THREE.Vector3(), jointDirection: new THREE.Vector3(), childDirection: new THREE.Vector3(), childJointDirection: new THREE.Vector3()}    
        
         this.rightThumb = {lengthScale: 0, direction: new THREE.Vector3(), jointDirection: new THREE.Vector3()}    
         this.rightIndex = {lengthScale: 0, direction: new THREE.Vector3(), jointDirection: new THREE.Vector3()}    
@@ -453,7 +454,7 @@ class IKPose {
         }
 
         if(!rig.ikSolver) {
-            chain.ikSolver.solve(rig.pose, limb.direction, limb.jointDirection);
+            chain.ikSolver.solve(rig.pose, limb.direction, limb.jointDirection, limb);
         }
     }
 
@@ -588,8 +589,8 @@ class IKCompute {
         this.computeSpine(rig, rig.chains.spine, ikPose, UP, FORWARD); // Swing = Up, Twist = Forward : for stability of the upper body
         
         // Arms
-        this.computeLimb(rig, rig.chains.arm_l, ikPose.leftArm);
-        this.computeLimb(rig, rig.chains.arm_r, ikPose.rightArm);
+        this.computeLimb(rig, rig.chains.arm_l, ikPose.leftArm, "leftArm");
+        this.computeLimb(rig, rig.chains.arm_r, ikPose.rightArm, "rightArm");
         
         this.computeLimb(rig, rig.chains.thumb_r, ikPose.rightThumb);
         this.computeLimb(rig, rig.chains.index_r, ikPose.rightIndex);
@@ -702,13 +703,16 @@ class IKCompute {
         // window.globals.app.scene.add(arrowHelper);  
     }
 
-    static computeLimb(rig, chain, ikLimb) {
+    static computeLimb(rig, chain, ikLimb, name = null) {
         const bones = chain.bones;
         const rootBone = rig.pose.bones[bones[0].idx];  // first bone
+        const secondBone = rig.pose.bones[bones[2].idx];  // second bone
         const endBone = rig.pose.bones[bones[bones.length-1].idx]; // end bone
         
         const rootPos = rootBone.getWorldPosition(new THREE.Vector3());
         const rootRot = rootBone.getWorldQuaternion(new THREE.Quaternion());
+        const secondPos = secondBone.getWorldPosition(new THREE.Vector3());         
+        const secondRot = secondBone.getWorldQuaternion(new THREE.Quaternion());        
         const endPos = endBone.getWorldPosition(new THREE.Vector3());         
         const endRot = endBone.getWorldQuaternion(new THREE.Quaternion()); 
 
@@ -717,6 +721,10 @@ class IKCompute {
             let cmat = new THREE.Matrix4().compose(rig.pose.transformsWorldEmbedded.forward.p, rig.pose.transformsWorldEmbedded.forward.q, rig.pose.transformsWorldEmbedded.forward.s);
             mat.premultiply(cmat);
             mat.decompose(rootPos, rootRot, new THREE.Vector3());
+
+            mat = secondBone.matrixWorld.clone();
+            mat.premultiply(cmat);
+            mat.decompose(secondPos, secondRot, new THREE.Vector3());
 
             mat = endBone.matrixWorld.clone();
             mat.premultiply(cmat);
@@ -731,9 +739,30 @@ class IKCompute {
         ikLimb.direction.copy(direction.normalize());
 
         const jointDir = chain.alt_up.clone().applyQuaternion(rootRot).normalize(); //get direction of the joint rotating the UP vector
-        const leftDir = new THREE.Vector3();
-        leftDir.crossVectors(jointDir, direction); // compute LEFT vector tp realign UP
-        ikLimb.jointDirection.crossVectors(direction, leftDir.normalize()).normalize(); // recompute UP, make it orthogonal to LEFT and FORWARD  
+        const leftDir = new THREE.Vector3().crossVectors(jointDir, direction).normalize(); // compute LEFT vector tp realign UP
+        ikLimb.jointDirection.crossVectors(direction, leftDir).normalize(); // recompute UP, make it orthogonal to LEFT and FORWARD  
+        ikLimb.directionToLimb = leftDir; //new THREE.Vector3().subVectors(secondPos, rootPos).normalize(); 
+
+        if(ikLimb.childDirection) {
+            let secondDirection = new THREE.Vector3().subVectors(endPos, secondPos).normalize(); // direction from the first to the final bone (IK direction)
+            ikLimb.childDirection.copy(secondDirection);
+            let childJointDir = jointDir.applyQuaternion(secondRot).normalize(); //get direction of the joint rotating the UP vector
+            const childJointLeft = new THREE.Vector3().crossVectors(childJointDir, secondDirection).normalize(); // compute LEFT vector tp realign UP
+            ikLimb.childJointDirection.crossVectors(secondDirection, childJointLeft).normalize(); // recompute UP, make it orthogonal to LEFT and FORWARD  
+        }
+        
+        // let arrowHelper = window.globals.app.scene.getObjectByName("left" + (name ? "_" + name : "") );
+        // if(!arrowHelper) {
+        //     arrowHelper = new THREE.ArrowHelper(leftDir, rootPos, 0.2, "red" );
+        //     arrowHelper.line.material = new THREE.LineDashedMaterial({color: "red", scale: 1, dashSize: 0.1, gapSize: 0.1, depthTest: false})
+        //     arrowHelper.line.computeLineDistances();   
+        //     arrowHelper.name = "left" + (name ? "_" + name : "");
+        //     window.globals.app.scene.add(arrowHelper);
+        // }
+        // else {
+        //     arrowHelper.setDirection(leftDir);
+        //     arrowHelper.position.copy(rootPos);
+        // }
     }
 
     static computeFingers( rig, chain, ikLimb) {
@@ -781,19 +810,6 @@ class IKCompute {
         const leftDir = new THREE.Vector3();
         leftDir.crossVectors(jointDir, direction); // compute LEFT vector tp realign UP
         ikLimb.jointDirection.crossVectors(direction, leftDir).normalize(); // recompute UP, make it orthogonal to LEFT and FORWARD   
-    }
-
-    static limb_three(tpose, pose, chain, ikLimb)  {
-
-        const bones = chain.bones;
-
-        const bindRootBone = tpose.bones[bones[0].idx];  // first bone
-        const bindSecondBone = tpose.bones[bones[1].idx]; // second bone
-        const bindEndBone = tpose.bones[bones[bones.length-1].idx]; // end bone
-        
-        const rootBone = pose.bones[bones[0].idx];  // first bone
-        const secondBone = pose.bones[bones[1].idx]; // second bone
-        const endBone = pose.bones[bones[bones.length-1].idx]; // end bone
     }
 
     static computeLookTwist(rig, boneInfo, ik, lookDirection, twistDirection) {
@@ -870,8 +886,8 @@ class IKVisualize {
         this.hip(ikRig, ik, scene, name);
         // this.limb(ikRig, ikRig.chains, "leg_l", ik.leftLeg, scene, name);
         // this.limb(ikRig, ikRig.chains, "leg_r", ik.rightLeg, scene, name);
-        // this.limb(ikRig, ikRig.chains, "arm_l", ik.leftArm, scene, name);
-        // this.limb(ikRig, ikRig.chains, "arm_r", ik.rightArm, scene, name);
+        this.limb(ikRig, ikRig.chains, "arm_l", ik.leftArm, scene, name);
+        this.limb(ikRig, ikRig.chains, "arm_r", ik.rightArm, scene, name);
         this.limb(ikRig, ikRig.chains, "thumb_r", ik.rightThumb, scene, name);
         this.limb(ikRig, ikRig.chains, "index_r", ik.rightIndex, scene, name);
         this.limb(ikRig, ikRig.chains, "middle_r", ik.rightMiddle, scene, name);
@@ -936,30 +952,32 @@ class IKVisualize {
         lastPos.multiplyScalar(len).add(firstSphere.position);
         lastSphere.position.copy(lastPos);
         // ikRig.pose.bones[bones[bones.length-1].idx].getWorldPosition(lastSphere.position); //End bone
-
+        
+        let direction = name == this.sourceName ? ik.direction : chains[chainName].ikSolver.srcForward;
         let directionArrow = scene.getObjectByName("limbDirectionLine_" + chainName + "_" + name);
         if(!directionArrow) {
-            directionArrow = new THREE.ArrowHelper( ik.direction, firstSphere.position, len, "yellow", 0.01 );
+            directionArrow = new THREE.ArrowHelper( direction, firstSphere.position, len, "yellow", 0.01 );
             directionArrow.line.material = new THREE.LineDashedMaterial({color: "yellow", scale: 1, dashSize: 0.05, gapSize: 0.05, depthTest:false})
             directionArrow.line.computeLineDistances();   
             directionArrow.name = "limbDirectionLine_" + chainName + "_" + name;
             scene.add(directionArrow);
         }
         else {
-            directionArrow.setDirection(ik.direction);
+            directionArrow.setDirection(direction);
             directionArrow.position.copy(firstSphere.position);
         }
 
         let arrowHelper = scene.getObjectByName("limbLine_" + chainName + "_" + name);
+        let jDirection = name == this.sourceName ? ik.jointDirection : chains[chainName].ikSolver.srcUp;
         if(!arrowHelper) {
-            arrowHelper = new THREE.ArrowHelper( ik.jointDirection, firstSphere.position, 0.2, "cyan" );
-            arrowHelper.line.material = new THREE.LineDashedMaterial({color: "cyan", scale: 1, dashSize: 0.1, gapSize: 0.1})
+            arrowHelper = new THREE.ArrowHelper( jDirection, firstSphere.position, 0.2, "cyan" );
+            arrowHelper.line.material = new THREE.LineDashedMaterial({color: "cyan", scale: 1, dashSize: 0.1, gapSize: 0.1, depthTest: false})
             arrowHelper.line.computeLineDistances();   
             arrowHelper.name = "limbLine_" + chainName + "_" + name;
             scene.add(arrowHelper);
         }
         else {
-            arrowHelper.setDirection(ik.jointDirection);
+            arrowHelper.setDirection(jDirection);
             arrowHelper.position.copy(firstSphere.position);
         }
        
@@ -1048,80 +1066,47 @@ class IKSolver {
         this.skeleton = skeleton;
         this.chain = chain;
         this.target = chain.target;
-        this.forward = new THREE.Vector3(0,0,1);
-        this.left = new THREE.Vector3(1,0,0);
-        this.up = new THREE.Vector3(0,1,0);
+        this.srcForward = new THREE.Vector3(0,0,1);
+        this.srcLeft = new THREE.Vector3(1,0,0);
+        this.srcUp = new THREE.Vector3(0,1,0);
         this.multi = multi;
     }
 
-    solve(pose, forward, up) {
+    // forward = direction, up = joint direction (look at)
+    solve(pose, forward, up, info) {
         if(!this.multi) {
-            this.limbSolver(pose, forward, up);
+            this.limbSolver(pose, forward, up, info);
         }
         else {
             this.multiSolver(pose, forward, up);
         }       
     }
     
-    limbSolver(pose, forward, up) {
-        this.forward = forward.normalize();
-        this.left = new THREE.Vector3().crossVectors(up, this.forward).normalize();
-        this.up = new THREE.Vector3().crossVectors(this.forward, this.left).normalize();
+    limbSolver(pose, forward, up, info = {}) { // forward = src direcition, up = src joint direction
+        this.srcForward = forward.normalize();
+        this.srcLeft = info.directionToLimb ? info.directionToLimb : new THREE.Vector3().crossVectors(up, this.srcForward).normalize();
+        this.srcUp = new THREE.Vector3().crossVectors(this.srcForward, this.srcLeft).normalize();
 
         const chain = this.chain;
-        const bindFirst = this.skeleton.bones[chain.bones[0].idx]; // Bone reference from Bind pose
-        const bindSecond = this.skeleton.bones[chain.bones[1].idx]; 
+        let bindSecond = pose.bones[chain.bones[1].idx]; 
+
         let poseFirst = pose.bones[chain.bones[0].idx]; // Bone reference from Current pose
         let poseSecond = pose.bones[chain.bones[1].idx]; 
 
         const bindFirstLen = chain.bones[0].len;
         const bindSecondLen = chain.bones[1].len;
 
-        let rotation = new THREE.Quaternion();
-
         // FIRST BONE - Aim then rotate by the angle.
         // Aim the first bone towards the target oriented with the bend direction.
-
-        // Get WS rotation of First bone
-        let bindFirstRot = poseFirst.getWorldQuaternion(new THREE.Quaternion());
-
-        if(pose.transformsWorldEmbedded) {
-            bindFirstRot.premultiply(pose.transformsWorldEmbedded.forward.q)
-        }
-
-        // Get Bone's WS forward direction
-        let direction = chain.alt_forward.clone();
-        direction.applyQuaternion(bindFirstRot).normalize();
-
-        // Swing
-        let swing = new THREE.Quaternion().setFromUnitVectors(direction, this.forward); // Create swing rotation
-        rotation.multiplyQuaternions(swing, bindFirstRot);
-
-        // Twist
-        // direction.setFromAxisAngle(chain.alt_up, rotation); // After swing, compute UP direction
-        direction = chain.alt_up.clone().applyQuaternion(rotation).normalize(); // new UP direction based only swing
-        let twist = direction.angleTo(this.up); // Get difference between Swing UP and Target UP
-       
-        if(twist <= EPSILON) {
-            twist = 0;
-        }
-        else {
-            direction.crossVectors(direction, this.forward);
-            if(direction.clone().dot(this.up) >= 0) {
-                twist = -twist;
-            }
-        }
-
-        rotation.premultiply(new THREE.Quaternion().setFromAxisAngle(this.forward, twist));
-        
-        //------------
+        let firstBoneRotation = this.aimBone(chain.bones[0].idx, this.srcForward, this.srcUp);
+                
         let parentPoseRot = poseFirst.parent.getWorldQuaternion(new THREE.Quaternion());
         let poseFirstPos = poseFirst.getWorldPosition(new THREE.Vector3());
 
         if(pose.transformsWorldEmbedded) {
             parentPoseRot.premultiply(pose.transformsWorldEmbedded.forward.q)
             let cmat = new THREE.Matrix4().compose(pose.transformsWorldEmbedded.forward.p, pose.transformsWorldEmbedded.forward.q, pose.transformsWorldEmbedded.forward.s);
-            let mat = bindFirst.matrixWorld.clone();
+            let mat = poseFirst.matrixWorld.clone();
             mat.premultiply(cmat);
             mat.decompose(poseFirstPos, new THREE.Quaternion(), new THREE.Vector3());
         }
@@ -1129,7 +1114,7 @@ class IKSolver {
            
         // let arrowHelper = window.globals.app.scene.getObjectByName("forward" );
         // if(!arrowHelper) {
-        //     arrowHelper = new THREE.ArrowHelper(this.forward, poseFirstPos, 0.2, "blue" );
+        //     arrowHelper = new THREE.ArrowHelper(this.srcForward, poseFirstPos, 0.2, "blue" );
         //     arrowHelper.line.material = new THREE.LineDashedMaterial({color: "blue", scale: 1, dashSize: 0.1, gapSize: 0.1})
         //     arrowHelper.line.computeLineDistances();   
         //     arrowHelper.name = "forward_";
@@ -1138,29 +1123,38 @@ class IKSolver {
        
         // arrowHelper = window.globals.app.scene.getObjectByName("up" );
         // if(!arrowHelper) {
-        //     arrowHelper = new THREE.ArrowHelper(this.up, poseFirstPos, 0.2, "green" );
+        //     arrowHelper = new THREE.ArrowHelper(this.srcUp, poseFirstPos, 0.2, "green" );
         //     arrowHelper.line.material = new THREE.LineDashedMaterial({color: "green", scale: 1, dashSize: 0.1, gapSize: 0.1})
         //     arrowHelper.line.computeLineDistances();   
         //     arrowHelper.name = "up_";
         //     window.globals.app.scene.add(arrowHelper);
         // }
 
-        // arrowHelper = window.globals.app.scene.getObjectByName("left" );
+        // arrowHelper = window.globals.app.scene.getObjectByName("left_solver" );
         // if(!arrowHelper) {
-        //     arrowHelper = new THREE.ArrowHelper(this.left, poseFirstPos, 0.2, "red" );
-        //     arrowHelper.line.material = new THREE.LineDashedMaterial({color: "red", scale: 1, dashSize: 0.1, gapSize: 0.1})
+        //     arrowHelper = new THREE.ArrowHelper(this.srcLeft, poseFirstPos, 0.2, "red" );
+        //     arrowHelper.line.material = new THREE.LineDashedMaterial({color: "red", scale: 1, dashSize: 0.1, gapSize: 0.1, depthTest:false})
         //     arrowHelper.line.computeLineDistances();   
         //     arrowHelper.name = "left_";
         //     window.globals.app.scene.add(arrowHelper);
         // }
+
+
         const chainLen = new THREE.Vector3().subVectors(chain.target.position, poseFirstPos).length();
 
         // Get the angle between the first bone and the target (last bone)
         let angle = lawCosSSS(bindFirstLen, chainLen, bindSecondLen);
 
         // Use the target's X axis for rotation along with the angle from SSS
-        rotation.premultiply(new THREE.Quaternion().setFromAxisAngle(this.left, -angle));
-        let rotationLS = rotation.clone();
+        firstBoneRotation.premultiply(new THREE.Quaternion().setFromAxisAngle(this.srcLeft, -angle));
+        // if(info.childDirection) {
+        //     let childForward = info.childDirection.normalize();
+        //     let childLeft = new THREE.Vector3().crossVectors(info.childJointDirection, childForward).normalize();
+        //     let childUp = new THREE.Vector3().crossVectors(childForward, childLeft).normalize();
+        //     let rotation = this.aimBone(chain.bones[1].idx, childForward, childUp);
+        //     firstBoneRotation.multiply(rotation.invert());
+        // }
+        let rotationLS = firstBoneRotation.clone();
        
         rotationLS.premultiply(parentPoseRot.invert()); // Convert to bone's LS by multiplying the inverse rotation of the parent
 
@@ -1170,25 +1164,22 @@ class IKSolver {
         //-----------------------------------------------------------
         // SECOND BONE - Rotate in the other direction
         angle = Math.PI - lawCosSSS(bindFirstLen, bindSecondLen, chainLen);
-        const invRot = rotation.clone().invert();
-        // rotation.multiplyQuaternions(rotation, poseSecond.quaternion); // Convert LS second bind bone rotation in the WS of the first current pose bone 
-        rotation.premultiply(new THREE.Quaternion().setFromAxisAngle(this.left, angle)); // Rotate it by the target's X axis
-        rotation.premultiply(invRot); // Convert to bone's LS
+        const invRot = firstBoneRotation.clone().invert();
+        
+        let secondBoneRotation = firstBoneRotation// firstBoneRotation.multiply(poseSecond.quaternion); // Convert LS second bind bone rotation in the WS of the first current pose bone 
+        secondBoneRotation.premultiply(new THREE.Quaternion().setFromAxisAngle(this.srcLeft, angle)); // Rotate it by the target's X axis
+        secondBoneRotation.premultiply(invRot); // Convert to bone's LS
 
-        poseSecond.quaternion.copy(rotation);
-        // poseSecond.quaternion.set(0,0.707, 0.707, 0)
+        poseSecond.quaternion.copy(secondBoneRotation);
         poseSecond.updateWorldMatrix(true, true);
     }
 
-    multiSolver(pose, forward, up) {
-        this.forward = forward.normalize();
-        this.left = new THREE.Vector3().crossVectors(up, this.forward).normalize();
-        this.up = new THREE.Vector3().crossVectors(this.forward, this.left).normalize();
+    multiSolver(pose, forward, up, srcdirection) {
+        this.srcForward = forward.normalize();
+        this.srcLeft = new THREE.Vector3().crossVectors(up, this.srcForward).normalize();
+        this.srcUp = new THREE.Vector3().crossVectors(this.srcForward, this.srcLeft).normalize();
 
         const chain = this.chain;
-        const bindFirst = this.skeleton.bones[chain.bones[0].idx]; // Bone reference from Bind pose
-        const bindSecond = this.skeleton.bones[chain.bones[1].idx]; 
-        const bindEnd = this.skeleton.bones[chain.bones[2].idx]; 
 
         let poseFirst = pose.bones[chain.bones[0].idx]; // Bone reference from Current pose
         let poseSecond = pose.bones[chain.bones[1].idx]; 
@@ -1204,30 +1195,17 @@ class IKSolver {
         let poseSecondPos = poseSecond.getWorldPosition(new THREE.Vector3());
         let poseEndPos = poseEnd.getWorldPosition(new THREE.Vector3());
 
-        // if(this.skeleton.transformsWorldEmbedded) {
-        //     parentPoseRot.premultiply(this.skeleton.transformsWorldEmbedded.forward.q)
-        //     let cmat = new THREE.Matrix4().compose(this.skeleton.transformsWorldEmbedded.forward.p, this.skeleton.transformsWorldEmbedded.forward.q, this.skeleton.transformsWorldEmbedded.forward.s);
-        //     let mat = bindFirst.matrixWorld.clone();
-        //     mat.premultiply(cmat);
-        //     mat.decompose(poseFirstPos, new THREE.Quaternion(), new THREE.Vector3());
-        //     mat = bindSecond.matrixWorld.clone();
-        //     mat.premultiply(cmat);
-        //     mat.decompose(poseEndPos, new THREE.Quaternion(), new THREE.Vector3());
-        //     mat = bindEnd.matrixWorld.clone();
-        //     mat.premultiply(cmat);
-        //     mat.decompose(poseEndPos, new THREE.Quaternion(), new THREE.Vector3());
-        // }
 
         if(pose.transformsWorldEmbedded) {
             parentPoseRot.premultiply(pose.transformsWorldEmbedded.forward.q)
             let cmat = new THREE.Matrix4().compose(pose.transformsWorldEmbedded.forward.p, pose.transformsWorldEmbedded.forward.q, pose.transformsWorldEmbedded.forward.s);
-            let mat = poeFirst.matrixWorld.clone();
+            let mat = poseFirst.matrixWorld.clone();
             mat.premultiply(cmat);
             mat.decompose(poseFirstPos, new THREE.Quaternion(), new THREE.Vector3());
-            mat = poeSecond.matrixWorld.clone();
+            mat = poseSecond.matrixWorld.clone();
             mat.premultiply(cmat);
             mat.decompose(poseEndPos, new THREE.Quaternion(), new THREE.Vector3());
-            mat = poeEnd.matrixWorld.clone();
+            mat = poseEnd.matrixWorld.clone();
             mat.premultiply(cmat);
             mat.decompose(poseEndPos, new THREE.Quaternion(), new THREE.Vector3());
         }
@@ -1239,47 +1217,17 @@ class IKSolver {
         const tBindFirstLen = chainLen * t; // A to B
         const tBindSecondLen = chainLen - tBindFirstLen; // B to C
 
-        let rotation = new THREE.Quaternion();
+        // let rotation = new THREE.Quaternion();
 
         // FIRST BONE - Aim then rotate by the angle.
         // Aim the first bone towards the target oriented with the bend direction.
+        let rotation = this.aimBone(chain.bones[0].idx, this.srcForward, this.srcUp);
 
-        // Get WS rotation of First bone
-        let bindFirstRot = poseFirst.getWorldQuaternion(new THREE.Quaternion());
-
-        if(pose.transformsWorldEmbedded) {
-            bindFirstRot.premultiply(pose.transformsWorldEmbedded.forward.q)
-        }
-
-        // Get Bone's WS forward direction
-        let direction = chain.alt_forward.clone();
-        direction.applyQuaternion(bindFirstRot).normalize();
-
-        // Swing
-        let swing = new THREE.Quaternion().setFromUnitVectors(direction, this.forward); // Create swing rotation
-        rotation.multiplyQuaternions(swing, bindFirstRot);
-
-        // Twist
-        // direction.setFromAxisAngle(chain.alt_up, rotation); // After swing, compute UP direction
-        direction = chain.alt_up.clone().applyQuaternion(rotation).normalize(); // new UP direction based only swing
-        let twist = direction.angleTo(this.up); // Get difference between Swing UP and Target UP
-        
-        if(twist <= EPSILON) {
-            twist = 0;
-        }
-        else {
-            direction.crossVectors(direction, this.forward);
-            if(direction.clone().dot(this.up) >= 0) {
-                twist = -twist;
-            }
-        }
-        rotation.premultiply(new THREE.Quaternion().setFromAxisAngle(this.forward, twist));
-        
         //------------
         // Get the angle between the first bone and the target (last bone)
         let angle =  lawCosSSS(bindFirstLen, tBindFirstLen, hbindSecondLen );
         // Use the target's X axis for rotation along with the angle from SSS
-        rotation.premultiply(new THREE.Quaternion().setFromAxisAngle(this.left, -angle));
+        rotation.premultiply(new THREE.Quaternion().setFromAxisAngle(this.srcLeft, -angle));
         let rotationLS = rotation.clone();
         rotationLS.premultiply(parentPoseRot.invert()); // Convert to bone's LS by multiplying the inverse rotation of the parent
 
@@ -1290,7 +1238,7 @@ class IKSolver {
         angle = Math.PI - lawCosSSS(bindFirstLen, hbindSecondLen, tBindFirstLen);
         let invRot = rotation.clone().invert();
         // rotation.multiplyQuaternions(rotation, poseSecond.quaternion); // Convert LS second bind bone rotation in the WS of the first current pose bone 
-        rotation.premultiply(new THREE.Quaternion().setFromAxisAngle(this.left, angle)); // Rotate it by the target's X axis
+        rotation.premultiply(new THREE.Quaternion().setFromAxisAngle(this.srcLeft, angle)); // Rotate it by the target's X axis
         
         rotationLS = rotation.clone();
         rotationLS.premultiply(invRot); // Convert to bone's LS
@@ -1302,13 +1250,52 @@ class IKSolver {
         angle = Math.PI - lawCosSSS(bindEndLen, bindSecondLen - hbindSecondLen, tBindSecondLen)
         invRot = rotation.clone().invert();
         // rotation.multiplyQuaternions(rotation, poseEnd.quaternion); // Convert LS second bind bone rotation in the WS of the first current pose bone 
-        rotation.premultiply(new THREE.Quaternion().setFromAxisAngle(this.left, angle)); // Rotate it by the target's X axis
+        rotation.premultiply(new THREE.Quaternion().setFromAxisAngle(this.srcLeft, angle)); // Rotate it by the target's X axis
         
         rotationLS = rotation.clone();
         rotationLS.premultiply(invRot); // Convert to bone's LS
 
         poseEnd.quaternion.copy(rotationLS);
         poseEnd.updateWorldMatrix(true, true);
+    }
+
+    aimBone(boneIdx, srcForward, srcUp) {
+        const tpose = this.skeleton;
+        const chain = this.chain;
+
+        // Get WS rotation of First bone
+        const bindFirst = tpose.bones[boneIdx]; // Bone reference from Bind pose
+        
+        let bindFirstRot = bindFirst.getWorldQuaternion(new THREE.Quaternion());
+        if(tpose.transformsWorldEmbedded) {
+            bindFirstRot.premultiply(tpose.transformsWorldEmbedded.forward.q)
+        }
+        
+        // Compute local forward (bone direction) for target
+        let trgForward = chain.alt_forward.clone().applyQuaternion(bindFirstRot).normalize();
+
+        // Swing
+        let swing = new THREE.Quaternion().setFromUnitVectors(trgForward, srcForward);
+        let finalRot = bindFirstRot.premultiply(swing);
+        
+        // Twist
+        let trgUp = chain.alt_up.clone().applyQuaternion(finalRot).normalize(); // Find new Up after swing applyied
+        let twist = srcUp.angleTo(trgUp); // Get angle difference between Swing Up and Target Up
+
+        if(twist <= EPSILON) {
+            twist = 0;
+        }
+        else {
+            let trgLeft = trgUp.cross(srcForward);
+            // let srcLeft = srcUp.cross(srcForward).normalize();
+            if(trgLeft.dot(srcUp) >= 0) {
+            // if(srcLeft.dot(trgUp) < 0) {
+                twist = - twist;
+            }
+        }
+
+        finalRot.premultiply(new THREE.Quaternion().setFromAxisAngle(srcForward, twist));
+        return finalRot;
     }
 }
 

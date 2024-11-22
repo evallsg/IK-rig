@@ -11,20 +11,21 @@ class App {
         this.loaderGLB = new GLTFLoader();
         this.loadedCharacters = {};
         this.sourceName = "bmlTest.glb";
-        this.targetName = "Ada.glb";
+        this.targetName = "mixamo.glb";
 
         this.playing = false;
     }
 
     init() {
         this.initScene();
-
+        IKVisualize.sourceName = this.sourceName;
+        IKVisualize.targetName = this.targetName;
         this.loadAvatar("./data/" + this.sourceName, this.sourceName, true, () => {
 
             // this.initRig(this.sourceName, true);
             const source = this.loadedCharacters[this.sourceName];
             let rig = new IKRig();
-            rig.init(source.skeleton, true, false);
+            rig.init(source.skeleton, false, true);
             source.IKPose = new IKPose();
             source.IKrig = rig;
             IKCompute.run(rig, source.IKPose);
@@ -63,16 +64,22 @@ class App {
                     crig.ikSolver.update();
                 }
                 IKVisualize.run(crig, current.IKPose, this.scene, this.targetName);
+                // current.model.position.y = 1.5;
+                // current.model.position.z = -1.5;
+                // current.model.position.x = -1.5;
                 this.animate();
 
                 window.addEventListener("keyup", (event) => {
                     switch(event.key) {
                         case " ":
                             this.playing = !this.playing;
+                            if(this.playing) {
+                                this.retarget();
+                            }
                             break;
                     
                         case "Escape":
-                            this.mixer.setTime(0.01);
+                            this.mixer.setTime(0);
                             this.retarget();
                             break;
                         
@@ -241,7 +248,7 @@ class App {
                 // glb.animations[0].tracks = tracks;
                 this.mixer = new THREE.AnimationMixer(skeleton.bones[0]);
                 this.mixer.clipAction(glb.animations[0]).setEffectiveWeight(1.0).play();
-                this.mixer.update(0.1);
+                // this.mixer.update(0.1);
             }
 
             this.scene.add(model);
