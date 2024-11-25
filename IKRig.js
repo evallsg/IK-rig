@@ -761,8 +761,8 @@ class IKCompute {
             let secondDirection = new THREE.Vector3().subVectors(endPos, secondPos).normalize(); // direction from the first to the final bone (IK direction)
             ikLimb.childDirection.copy(secondDirection);
             let childJointDir = jointDir.applyQuaternion(secondRot).normalize(); //get direction of the joint rotating the UP vector
-            const childJointLeft = new THREE.Vector3().crossVectors(childJointDir, secondDirection).normalize(); // compute LEFT vector tp realign UP
-            ikLimb.childJointDirection.crossVectors(secondDirection, childJointLeft).normalize(); // recompute UP, make it orthogonal to LEFT and FORWARD  
+            const childJointLeft = new THREE.Vector3().crossVectors(direction, secondDirection).normalize(); // compute LEFT vector tp realign UP
+            ikLimb.childJointDirection.copy(childJointLeft);//.crossVectors(secondDirection, childJointLeft).normalize(); // recompute UP, make it orthogonal to LEFT and FORWARD  
         }
         
         // let arrowHelper = window.globals.app.scene.getObjectByName("left" + (name ? "_" + name : "") );
@@ -1095,7 +1095,7 @@ class IKSolver {
     // forward = direction, up = joint direction (look at)
     solve(pose, forward, up, info) {
         if(!this.multi) {
-            this.limbSolver(pose, forward, up);
+            this.limbSolver(pose, forward, up, info);
         }
         else {
             this.multiSolver(pose, forward, up);
@@ -1104,7 +1104,7 @@ class IKSolver {
     
     limbSolver(pose, forward, up, info = {}) { // forward = src direcition, up = src joint direction
         this.srcForward = forward.normalize();
-        this.srcLeft = info.directionToLimb ? info.directionToLimb : new THREE.Vector3().crossVectors(up, this.srcForward).normalize();
+        this.srcLeft = new THREE.Vector3().crossVectors(up, this.srcForward).normalize();
         this.srcUp = new THREE.Vector3().crossVectors(this.srcForward, this.srcLeft).normalize();
 
         const chain = this.chain;
@@ -1217,6 +1217,24 @@ class IKSolver {
 
         poseSecond.quaternion.copy(secondBoneRotation);
         poseSecond.updateWorldMatrix(true, true);
+
+        // if(info.childJointDirection) {
+        //     const limbDir = info.childJointDirection;
+
+        //     const poseFirstPos = poseFirst.getWorldPosition(new THREE.Vector3());
+        //     const poseSecondPos = poseFirst.getWorldPosition(new THREE.Vector3());
+        //     let firstDir = new THREE.Vector3().subVectors(poseSecondPos, poseFirstPos).normalize(); // direction from the first to the final bone (IK direction)
+        //     let secondDir = new THREE.Vector3().subVectors(chain.target.position, poseSecondPos).normalize(); // direction from the first to the final bone (IK direction)
+
+        //     const childJointLeft = new THREE.Vector3().crossVectors(firstDir, secondDir).normalize(); 
+        //     const q = new THREE.Quaternion().setFromUnitVectors(childJointLeft, limbDir);
+        //     firstBoneRotation.premultiply(q);
+        //     firstBoneRotation.premultiply(parentPoseRot); // Convert to bone's LS by multiplying the inverse rotation of the parent
+
+        //     poseFirst.quaternion.copy(firstBoneRotation);
+        //     poseFirst.updateWorldMatrix(true, true);
+        //     // poseFirst
+        // }
     }
 
     multiSolver(pose, forward, up, srcdirection) {
