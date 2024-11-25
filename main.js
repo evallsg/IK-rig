@@ -4,6 +4,13 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { FABRIKSolver, CCDIKSolver } from './IKSolver.js'
 import { IKCompute, IKRig, IKPose, IKSolver, IKVisualize } from './IKRig.js';
 
+const FORWARD = new THREE.Vector3(0,0,1);
+const UP =  new THREE.Vector3(0,1,0);
+const DOWN = new THREE.Vector3(0,-1,0);
+const BACK = new THREE.Vector3(0,0,-1);
+const LEFT = new THREE.Vector3(1,0,0);
+const RIGHT =  new THREE.Vector3(-1,0,0);
+
 class App {
     constructor() {
         this.elapsedTime = 0; // clock is ok but might need more time control to dinamicaly change signing speed
@@ -25,7 +32,49 @@ class App {
             // this.initRig(this.sourceName, true);
             const source = this.loadedCharacters[this.sourceName];
             let rig = new IKRig();
-            rig.init(source.skeleton, false, true);
+            
+            rig.init(source.skeleton, true, true, this.sourceName == 'Woman.glb' ? 0 : 1);
+
+            if(this.sourceName == 'Woman.glb') {
+                rig.addPoint( "hip", "Hips" )
+                rig.addPoint( "head", "Head" )
+                rig.addPoint( "neck", "Neck" )
+                rig.addPoint( "chest", "Spine2" )
+                rig.addPoint( "foot_l", "LeftFoot" )
+                rig.addPoint( "foot_r", "RightFoot" )
+            
+                rig.addChain( "arm_r", [ "RightArm", "RightForeArm" ],  "RightHand")
+                rig.addChain( "arm_l", [ "LeftArm", "LeftForeArm" ], "LeftHand") 
+            
+                rig.addPoint( "hand_r", "RightHand");
+                rig.addPoint( "hand_l", "LeftHand");
+
+                rig.addChain( "leg_r", [ "RightUpLeg", "RightLeg" ], "RightFoot")
+                rig.addChain( "leg_l", [ "LeftUpLeg", "LeftLeg" ], "LeftFoot")
+            
+                rig.addChain( "spine", [ "Spine", "Spine1", "Spine2" ] ) //, "y"
+                
+                rig.addChain( "thumb_r", [ "RightHandThumb1", "RightHandThumb2", "RightHandThumb3" ], "RightHandThumb4", true ) //, "y"
+                rig.addChain( "index_r", [ "RightHandIndex1", "RightHandIndex2", "RightHandIndex3" ], "RightHandIndex4", true ) //, "y"
+                
+                rig.addChain( "thumb_l", [ "LeftHandThumb1", "LeftHandThumb2", "LeftHandThumb3" ], "LeftHandThumb4", true ) //, "y"
+                rig.addChain( "index_l", [ "LeftHandIndex1", "LeftHandIndex2", "LeftHandIndex3" ], "LeftHandIndex4", true ) //, "y"
+               
+                
+            
+                // Set Direction of Joints on th Limbs   
+                rig.setAlternatives( "leg_l", DOWN, FORWARD, rig.tpose );
+                rig.setAlternatives( "leg_r", DOWN, FORWARD, rig.tpose );
+                rig.setAlternatives( "arm_l", LEFT, BACK, rig.tpose );
+                rig.setAlternatives( "arm_r", RIGHT, BACK, rig.tpose );
+                rig.setAlternatives( "thumb_r", RIGHT, FORWARD, rig.tpose );
+                rig.setAlternatives( "index_r", RIGHT, UP, rig.tpose );
+              
+                rig.setAlternatives( "thumb_l", LEFT, UP, rig.tpose );
+                rig.setAlternatives( "index_l", LEFT, UP, rig.tpose );
+              
+            }
+
             source.IKPose = new IKPose();
             source.IKrig = rig;
             IKCompute.run(rig, source.IKPose);
@@ -59,6 +108,11 @@ class App {
                 current.IKrig = crig;
                 
                 source.IKPose.applyRig(crig, current.IKPose);
+                // var boneContainer = new THREE.Group();
+                // boneContainer.add( crig.tpose.bones[ 0 ] );
+                // const skeletonHelper = new THREE.SkeletonHelper(crig.tpose.bones[0]);
+                // window.globals.app.scene.add(boneContainer);
+                // window.globals.app.scene.add(skeletonHelper);
                 // IKCompute.run(crig, current.IKPose);
                 if(crig.ikSolver) {
                     crig.ikSolver.update();

@@ -23,12 +23,12 @@ function findIndexOfBone( skeleton, bone ){
 
 const CURRENT = 1;
 const EPSILON = (0.01 * Math.PI / 180);
-let FORWARD = new THREE.Vector3(0,0,1);
-let UP =  new THREE.Vector3(0,1,0);
-let DOWN = new THREE.Vector3(0,-1,0);
-let BACK = new THREE.Vector3(0,0,-1);
-let LEFT = new THREE.Vector3(1,0,0);
-let RIGHT =  new THREE.Vector3(-1,0,0);
+const FORWARD = new THREE.Vector3(0,0,1);
+const UP =  new THREE.Vector3(0,1,0);
+const DOWN = new THREE.Vector3(0,-1,0);
+const BACK = new THREE.Vector3(0,0,-1);
+const LEFT = new THREE.Vector3(1,0,0);
+const RIGHT =  new THREE.Vector3(-1,0,0);
 
 class IKRig {
     static ARM_MIXAMO = 1;
@@ -62,6 +62,7 @@ class IKRig {
         }
         this.tpose = this.cloneRawSkeleton( skeleton, mode, useNodeOffset );
         this.tpose.pose(); // returns pure skeleton, without any object model applied 
+        
         this.pose = this.skeleton;//this.cloneRawSkeleton( skeleton, null, useNodeOffset ); // returns pure skeleton, without any object model applied 
             // this.pose.pose();
         // this.ikSolver = new CCDIKSolver(this.skeleton);
@@ -87,20 +88,20 @@ class IKRig {
         let bonesInfo = [];
         let totalLength = 0;
         for(let i = 0; i < arrayNames.length; i ++) {
-            const idx = findIndexOfBoneByName(this.skeleton, arrayNames[i]);
+            const idx = findIndexOfBoneByName(this.tpose, arrayNames[i]);
             let len = 0;
             if(i > 0) {
                 
-                let parentPos = this.skeleton.bones[bonesInfo[i-1].idx].getWorldPosition(new THREE.Vector3());
-                let pos = this.skeleton.bones[idx].getWorldPosition(new THREE.Vector3());
+                let parentPos = this.tpose.bones[bonesInfo[i-1].idx].getWorldPosition(new THREE.Vector3());
+                let pos = this.tpose.bones[idx].getWorldPosition(new THREE.Vector3());
         
-                if(this.pose.transformsWorldEmbedded) {
-                    let cmat = new THREE.Matrix4().compose(this.pose.transformsWorldEmbedded.forward.p, this.pose.transformsWorldEmbedded.forward.q, this.pose.transformsWorldEmbedded.forward.s);
-                    let mat = this.skeleton.bones[bonesInfo[i-1].idx].matrix.clone();
+                if(this.tpose.transformsWorldEmbedded) {
+                    let cmat = new THREE.Matrix4().compose(this.tpose.transformsWorldEmbedded.forward.p, this.tpose.transformsWorldEmbedded.forward.q, this.tpose.transformsWorldEmbedded.forward.s);
+                    let mat = this.tpose.bones[bonesInfo[i-1].idx].matrixWorld.clone();
                     mat.premultiply(cmat);
                     mat.decompose(parentPos, new THREE.Quaternion(), new THREE.Vector3());
 
-                    mat = this.skeleton.bones[idx].matrix.clone();
+                    mat = this.tpose.bones[idx].matrixWorld.clone();
                     mat.premultiply(cmat);
                     mat.decompose(pos, new THREE.Quaternion(), new THREE.Vector3());
                 }
@@ -113,22 +114,23 @@ class IKRig {
         }
 
         let endEffector = bones[bones.length-1];
+        let targetPos = this.tpose.bones[endEffector].getWorldPosition(new THREE.Vector3());
         if(endEffectorName) {
-            endEffector = findIndexOfBoneByName(this.skeleton, endEffectorName);
+            endEffector = findIndexOfBoneByName(this.tpose, endEffectorName);
             if(endEffector > -1) {
-                const parentPos = this.skeleton.bones[bonesInfo[bonesInfo.length-1].idx].getWorldPosition(new THREE.Vector3());
-                const pos = this.skeleton.bones[endEffector].getWorldPosition(new THREE.Vector3());
-                if(this.pose.transformsWorldEmbedded) {
-                    let cmat = new THREE.Matrix4().compose(this.pose.transformsWorldEmbedded.forward.p, this.pose.transformsWorldEmbedded.forward.q, this.pose.transformsWorldEmbedded.forward.s);
-                    let mat = this.skeleton.bones[bonesInfo[i-1].idx].matrix.clone();
+                const parentPos = this.tpose.bones[bonesInfo[bonesInfo.length-1].idx].getWorldPosition(new THREE.Vector3());
+                targetPos = this.tpose.bones[endEffector].getWorldPosition(new THREE.Vector3());
+                if(this.tpose.transformsWorldEmbedded) {
+                    let cmat = new THREE.Matrix4().compose(this.tpose.transformsWorldEmbedded.forward.p, this.tpose.transformsWorldEmbedded.forward.q, this.tpose.transformsWorldEmbedded.forward.s);
+                    let mat = this.tpose.bones[bonesInfo[bonesInfo.length-1].idx].matrixWorld.clone();
                     mat.premultiply(cmat);
                     mat.decompose(parentPos, new THREE.Quaternion(), new THREE.Vector3());
 
-                    mat = this.skeleton.bones[idx].matrix.clone();
+                    mat = this.tpose.bones[endEffector].matrixWorld.clone();
                     mat.premultiply(cmat);
-                    mat.decompose(pos, new THREE.Quaternion(), new THREE.Vector3());
+                    mat.decompose(targetPos, new THREE.Quaternion(), new THREE.Vector3());
                 }
-                const len = parentPos.distanceTo(pos);
+                const len = parentPos.distanceTo(targetPos);
                 bonesInfo[bonesInfo.length-1].len = len;
                 bonesInfo.push({idx: endEffector, len: 0});
                 bones.push(endEffector);
@@ -137,7 +139,7 @@ class IKRig {
         }
 
         const target = new THREE.Object3D();
-        target.position.copy(this.skeleton.bones[bonesInfo[bonesInfo.length-1].idx].getWorldPosition(new THREE.Vector3()));
+        target.position.copy(targetPos);
 
         this.chains[ name ] =  {
             name: name,
@@ -594,15 +596,27 @@ class IKCompute {
         
         this.computeLimb(rig, rig.chains.thumb_r, ikPose.rightThumb);
         this.computeLimb(rig, rig.chains.index_r, ikPose.rightIndex);
-        this.computeLimb(rig, rig.chains.middle_r, ikPose.rightMiddle);
-        this.computeLimb(rig, rig.chains.ring_r, ikPose.rightRing);
-        this.computeLimb(rig, rig.chains.pinky_r, ikPose.rightPinky);
+        if(rig.chains.middle_r) {
+            this.computeLimb(rig, rig.chains.middle_r, ikPose.rightMiddle);
+        }
+        if(rig.chains.ring_r) {
+            this.computeLimb(rig, rig.chains.ring_r, ikPose.rightRing);
+        }
+        if(rig.chains.pinky_r) {
+            this.computeLimb(rig, rig.chains.pinky_r, ikPose.rightPinky);
+        }
 
         this.computeLimb(rig, rig.chains.thumb_l, ikPose.leftThumb);
         this.computeLimb(rig, rig.chains.index_l, ikPose.leftIndex);
-        this.computeLimb(rig, rig.chains.middle_l, ikPose.leftMiddle);
-        this.computeLimb(rig, rig.chains.ring_l, ikPose.leftRing);
-        this.computeLimb(rig, rig.chains.pinky_l, ikPose.leftPinky);
+        if(rig.chains.middle_l) {
+            this.computeLimb(rig, rig.chains.middle_l, ikPose.leftMiddle);
+        }
+        if(rig.chains.ring_l) {
+            this.computeLimb(rig, rig.chains.ring_l, ikPose.leftRing);
+        }
+        if(rig.chains.pinky_l) {
+            this.computeLimb(rig, rig.chains.pinky_l, ikPose.leftPinky);
+        }
         // Hands
         this.computeLookTwist( rig, rig.points.hand_l, ikPose.leftHand, LEFT, BACK ); // Look = Forward, Twist = Up
         this.computeLookTwist( rig, rig.points.hand_r, ikPose.rightHand, RIGHT, BACK );
@@ -884,15 +898,21 @@ class IKCompute {
 class IKVisualize {
     static run(ikRig, ik, scene, name) {
         this.hip(ikRig, ik, scene, name);
-        // this.limb(ikRig, ikRig.chains, "leg_l", ik.leftLeg, scene, name);
-        // this.limb(ikRig, ikRig.chains, "leg_r", ik.rightLeg, scene, name);
+        this.limb(ikRig, ikRig.chains, "leg_l", ik.leftLeg, scene, name);
+        this.limb(ikRig, ikRig.chains, "leg_r", ik.rightLeg, scene, name);
         this.limb(ikRig, ikRig.chains, "arm_l", ik.leftArm, scene, name);
         this.limb(ikRig, ikRig.chains, "arm_r", ik.rightArm, scene, name);
-        this.limb(ikRig, ikRig.chains, "thumb_r", ik.rightThumb, scene, name);
-        this.limb(ikRig, ikRig.chains, "index_r", ik.rightIndex, scene, name);
-        this.limb(ikRig, ikRig.chains, "middle_r", ik.rightMiddle, scene, name);
-        this.limb(ikRig, ikRig.chains, "ring_r", ik.rightRing, scene, name);
-        this.limb(ikRig, ikRig.chains, "pinky_r", ik.rightPinky, scene, name);
+        // this.limb(ikRig, ikRig.chains, "thumb_r", ik.rightThumb, scene, name);
+        // this.limb(ikRig, ikRig.chains, "index_r", ik.rightIndex, scene, name);
+        // if(ikRig.chains.middle_r) {
+        //     this.limb(ikRig, ikRig.chains, "middle_r", ik.rightMiddle, scene, name);
+        // }
+        // if(ikRig.chains.ring_r) {
+        //     this.limb(ikRig, ikRig.chains, "ring_r", ik.rightRing, scene, name);
+        // }
+        // if(ikRig.chains.pinky_r) {
+        //     this.limb(ikRig, ikRig.chains, "pinky_r", ik.rightPinky, scene, name);
+        // }
         // this.foot(ikRig, ikRig.points.foot_l, "foot_l", ik.leftFoot, scene, name);
         // this.foot(ikRig, ikRig.points.foot_r, "foot_r", ik.rightFoot, scene, name);
     }
@@ -1075,7 +1095,7 @@ class IKSolver {
     // forward = direction, up = joint direction (look at)
     solve(pose, forward, up, info) {
         if(!this.multi) {
-            this.limbSolver(pose, forward, up, info);
+            this.limbSolver(pose, forward, up);
         }
         else {
             this.multiSolver(pose, forward, up);
@@ -1111,20 +1131,23 @@ class IKSolver {
             mat.decompose(poseFirstPos, new THREE.Quaternion(), new THREE.Vector3());
         }
 
-           
-        // let arrowHelper = window.globals.app.scene.getObjectByName("forward" );
+        const chainLen = new THREE.Vector3().subVectors(chain.target.position, poseFirstPos).length();
+
+
+        // let arrowHelper = window.globals.app.scene.getObjectByName("forward1" );
         // if(!arrowHelper) {
-        //     arrowHelper = new THREE.ArrowHelper(this.srcForward, poseFirstPos, 0.2, "blue" );
-        //     arrowHelper.line.material = new THREE.LineDashedMaterial({color: "blue", scale: 1, dashSize: 0.1, gapSize: 0.1})
+        //     arrowHelper = new THREE.ArrowHelper(this.srcForward, poseFirstPos, chainLen, "blue" );
+        //     arrowHelper.line.material = new THREE.LineDashedMaterial({color: "blue", scale: 1, dashSize: 0.1, gapSize: 0.1, depthTest: false})
         //     arrowHelper.line.computeLineDistances();   
+        //     arrowHelper.cone.material.depthTest = false;
         //     arrowHelper.name = "forward_";
         //     window.globals.app.scene.add(arrowHelper);
         // }
        
-        // arrowHelper = window.globals.app.scene.getObjectByName("up" );
+        // arrowHelper = window.globals.app.scene.getObjectByName("up1" );
         // if(!arrowHelper) {
         //     arrowHelper = new THREE.ArrowHelper(this.srcUp, poseFirstPos, 0.2, "green" );
-        //     arrowHelper.line.material = new THREE.LineDashedMaterial({color: "green", scale: 1, dashSize: 0.1, gapSize: 0.1})
+        //     arrowHelper.line.material = new THREE.LineDashedMaterial({color: "green", scale: 1, dashSize: 0.1, gapSize: 0.1, depthTest:false})
         //     arrowHelper.line.computeLineDistances();   
         //     arrowHelper.name = "up_";
         //     window.globals.app.scene.add(arrowHelper);
@@ -1140,7 +1163,29 @@ class IKSolver {
         // }
 
 
-        const chainLen = new THREE.Vector3().subVectors(chain.target.position, poseFirstPos).length();
+        // arrowHelper = window.globals.app.scene.getObjectByName("pp" );
+        // if(!arrowHelper) {
+        //     arrowHelper = new THREE.ArrowHelper(this.srcForward, poseFirstPos, bindFirstLen, "orange" );
+        //     arrowHelper.line.material = new THREE.LineDashedMaterial({color: "orange", scale: 1, dashSize: 0.1, gapSize: 0.1, depthTest:false})
+        //     arrowHelper.line.computeLineDistances();  
+        //     arrowHelper.cone.material.depthTest = false;
+ 
+        //     arrowHelper.name = "pp_";
+        //     window.globals.app.scene.add(arrowHelper);
+        // }
+
+        // arrowHelper = window.globals.app.scene.getObjectByName("bb" );
+        // if(!arrowHelper) {
+        //     arrowHelper = new THREE.ArrowHelper(this.srcForward, poseSecond.getWorldPosition(new THREE.Vector3()), bindSecondLen, "pink" );
+        //     arrowHelper.line.material = new THREE.LineDashedMaterial({color: "pink", scale: 1, dashSize: 0.1, gapSize: 0.1, depthTest:false})
+        //     arrowHelper.line.computeLineDistances();  
+        //     arrowHelper.cone.material.depthTest = false;
+ 
+        //     arrowHelper.name = "pbbp_";
+        //     window.globals.app.scene.add(arrowHelper);
+        // }
+
+
 
         // Get the angle between the first bone and the target (last bone)
         let angle = lawCosSSS(bindFirstLen, chainLen, bindSecondLen);
