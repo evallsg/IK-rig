@@ -720,7 +720,7 @@ class IKCompute {
     static computeLimb(rig, chain, ikLimb, name = null) {
         const bones = chain.bones;
         const rootBone = rig.pose.bones[bones[0].idx];  // first bone
-        const secondBone = rig.pose.bones[bones[2].idx];  // second bone
+        const secondBone = rig.pose.bones[bones[1].idx];  // second bone
         const endBone = rig.pose.bones[bones[bones.length-1].idx]; // end bone
         
         const rootPos = rootBone.getWorldPosition(new THREE.Vector3());
@@ -763,20 +763,21 @@ class IKCompute {
             let childJointDir = jointDir.applyQuaternion(secondRot).normalize(); //get direction of the joint rotating the UP vector
             const childJointLeft = new THREE.Vector3().crossVectors(direction, secondDirection).normalize(); // compute LEFT vector tp realign UP
             ikLimb.childJointDirection.copy(childJointLeft);//.crossVectors(secondDirection, childJointLeft).normalize(); // recompute UP, make it orthogonal to LEFT and FORWARD  
+            
+            let arrowHelper = window.globals.app.scene.getObjectByName("left" + (name ? "_" + name : "") );
+            if(!arrowHelper) {
+                arrowHelper = new THREE.ArrowHelper(childJointLeft, secondPos, 0.2, "pink" );
+                arrowHelper.line.material = new THREE.LineDashedMaterial({color: "pink", scale: 1, dashSize: 0.1, gapSize: 0.1, depthTest: false})
+                arrowHelper.line.computeLineDistances();   
+                arrowHelper.name = "left" + (name ? "_" + name : "");
+                window.globals.app.scene.add(arrowHelper);
+            }
+            else {
+                arrowHelper.setDirection(childJointLeft);
+                arrowHelper.position.copy(secondPos);
+            }
         }
         
-        // let arrowHelper = window.globals.app.scene.getObjectByName("left" + (name ? "_" + name : "") );
-        // if(!arrowHelper) {
-        //     arrowHelper = new THREE.ArrowHelper(leftDir, rootPos, 0.2, "red" );
-        //     arrowHelper.line.material = new THREE.LineDashedMaterial({color: "red", scale: 1, dashSize: 0.1, gapSize: 0.1, depthTest: false})
-        //     arrowHelper.line.computeLineDistances();   
-        //     arrowHelper.name = "left" + (name ? "_" + name : "");
-        //     window.globals.app.scene.add(arrowHelper);
-        // }
-        // else {
-        //     arrowHelper.setDirection(leftDir);
-        //     arrowHelper.position.copy(rootPos);
-        // }
     }
 
     static computeFingers( rig, chain, ikLimb) {
@@ -902,19 +903,19 @@ class IKVisualize {
         this.limb(ikRig, ikRig.chains, "leg_r", ik.rightLeg, scene, name);
         this.limb(ikRig, ikRig.chains, "arm_l", ik.leftArm, scene, name);
         this.limb(ikRig, ikRig.chains, "arm_r", ik.rightArm, scene, name);
-        // this.limb(ikRig, ikRig.chains, "thumb_r", ik.rightThumb, scene, name);
-        // this.limb(ikRig, ikRig.chains, "index_r", ik.rightIndex, scene, name);
-        // if(ikRig.chains.middle_r) {
-        //     this.limb(ikRig, ikRig.chains, "middle_r", ik.rightMiddle, scene, name);
-        // }
-        // if(ikRig.chains.ring_r) {
-        //     this.limb(ikRig, ikRig.chains, "ring_r", ik.rightRing, scene, name);
-        // }
-        // if(ikRig.chains.pinky_r) {
-        //     this.limb(ikRig, ikRig.chains, "pinky_r", ik.rightPinky, scene, name);
-        // }
-        // this.foot(ikRig, ikRig.points.foot_l, "foot_l", ik.leftFoot, scene, name);
-        // this.foot(ikRig, ikRig.points.foot_r, "foot_r", ik.rightFoot, scene, name);
+        this.limb(ikRig, ikRig.chains, "thumb_r", ik.rightThumb, scene, name);
+        this.limb(ikRig, ikRig.chains, "index_r", ik.rightIndex, scene, name);
+        if(ikRig.chains.middle_r) {
+            this.limb(ikRig, ikRig.chains, "middle_r", ik.rightMiddle, scene, name);
+        }
+        if(ikRig.chains.ring_r) {
+            this.limb(ikRig, ikRig.chains, "ring_r", ik.rightRing, scene, name);
+        }
+        if(ikRig.chains.pinky_r) {
+            this.limb(ikRig, ikRig.chains, "pinky_r", ik.rightPinky, scene, name);
+        }
+        this.foot(ikRig, ikRig.points.foot_l, "foot_l", ik.leftFoot, scene, name);
+        this.foot(ikRig, ikRig.points.foot_r, "foot_r", ik.rightFoot, scene, name);
     }
 
     static hip(ikRig, ik, scene, name) {
@@ -1010,6 +1011,45 @@ class IKVisualize {
             scene.add(target);
         }
         target.position.copy(chains[chainName].target.position);
+
+        arrowHelper = scene.getObjectByName("up" + chainName + "_" + name);        
+        if(!arrowHelper) {
+            arrowHelper = new THREE.ArrowHelper( chains[chainName].alt_up, firstSphere.position, 0.2, "green" );
+            arrowHelper.line.material = new THREE.LineDashedMaterial({color: "green", scale: 1, dashSize: 0.1, gapSize: 0.1, depthTest: false})
+            arrowHelper.line.computeLineDistances();   
+            arrowHelper.name = "up" + chainName + "_" + name;
+            scene.add(arrowHelper);
+        }
+        else {
+            arrowHelper.setDirection(chains[chainName].alt_up);
+            arrowHelper.position.copy(firstSphere.position);
+        }
+
+        arrowHelper = scene.getObjectByName("left" + chainName + "_" + name);        
+        if(!arrowHelper) {
+            arrowHelper = new THREE.ArrowHelper( chains[chainName].alt_left, firstSphere.position, 0.2, "red" );
+            arrowHelper.line.material = new THREE.LineDashedMaterial({color: "red", scale: 1, dashSize: 0.1, gapSize: 0.1, depthTest: false})
+            arrowHelper.line.computeLineDistances();   
+            arrowHelper.name = "left" + chainName + "_" + name;
+            scene.add(arrowHelper);
+        }
+        else if(chains[chainName].alt_left){
+            arrowHelper.setDirection(chains[chainName].alt_left);
+            arrowHelper.position.copy(firstSphere.position);
+        }
+
+        arrowHelper = scene.getObjectByName("forward" + chainName + "_" + name);        
+        if(!arrowHelper) {
+            arrowHelper = new THREE.ArrowHelper( chains[chainName].alt_forward, firstSphere.position, 0.2, "blue" );
+            arrowHelper.line.material = new THREE.LineDashedMaterial({color: "blue", scale: 1, dashSize: 0.1, gapSize: 0.1, depthTest: false})
+            arrowHelper.line.computeLineDistances();   
+            arrowHelper.name = "forward" + chainName + "_" + name;
+            scene.add(arrowHelper);
+        }
+        else {
+            arrowHelper.setDirection(chains[chainName].alt_forward);
+            arrowHelper.position.copy(firstSphere.position);
+        }
         // if(name == 'vegeta') {
             // target.position.x+=0.5+ikRig.pose.bones[0].position.x;
         //   target.position.z+= ikRig.pose.bones[0].position.z;
@@ -1200,8 +1240,8 @@ class IKSolver {
         //     firstBoneRotation.multiply(rotation.invert());
         // }
         let rotationLS = firstBoneRotation.clone();
-       
-        rotationLS.premultiply(parentPoseRot.invert()); // Convert to bone's LS by multiplying the inverse rotation of the parent
+        const parentInv = parentPoseRot.invert();
+        rotationLS.premultiply(parentInv); // Convert to bone's LS by multiplying the inverse rotation of the parent
 
         poseFirst.quaternion.copy(rotationLS);
         poseFirst.updateWorldMatrix(true, true);
@@ -1211,30 +1251,83 @@ class IKSolver {
         angle = Math.PI - lawCosSSS(bindFirstLen, bindSecondLen, chainLen);
         const invRot = firstBoneRotation.clone().invert();
         
-        let secondBoneRotation = firstBoneRotation// firstBoneRotation.multiply(poseSecond.quaternion); // Convert LS second bind bone rotation in the WS of the first current pose bone 
+        let secondBoneRotation = firstBoneRotation.clone();// firstBoneRotation.multiply(poseSecond.quaternion); // Convert LS second bind bone rotation in the WS of the first current pose bone 
         secondBoneRotation.premultiply(new THREE.Quaternion().setFromAxisAngle(this.srcLeft, angle)); // Rotate it by the target's X axis
         secondBoneRotation.premultiply(invRot); // Convert to bone's LS
 
         poseSecond.quaternion.copy(secondBoneRotation);
         poseSecond.updateWorldMatrix(true, true);
 
-        // if(info.childJointDirection) {
-        //     const limbDir = info.childJointDirection;
+        if(info.childJointDirection) {
+            const limbDir = info.childJointDirection;
 
-        //     const poseFirstPos = poseFirst.getWorldPosition(new THREE.Vector3());
-        //     const poseSecondPos = poseFirst.getWorldPosition(new THREE.Vector3());
-        //     let firstDir = new THREE.Vector3().subVectors(poseSecondPos, poseFirstPos).normalize(); // direction from the first to the final bone (IK direction)
-        //     let secondDir = new THREE.Vector3().subVectors(chain.target.position, poseSecondPos).normalize(); // direction from the first to the final bone (IK direction)
+            const poseFirstPos = poseFirst.getWorldPosition(new THREE.Vector3());
+            const poseSecondPos = poseSecond.getWorldPosition(new THREE.Vector3());
+            let firstDir = new THREE.Vector3().subVectors(poseSecondPos, poseFirstPos).normalize(); // direction from the first to the final bone (IK direction)
+            let secondDir = new THREE.Vector3().subVectors(chain.target.position, poseSecondPos).normalize(); // direction from the first to the final bone (IK direction)
 
-        //     const childJointLeft = new THREE.Vector3().crossVectors(firstDir, secondDir).normalize(); 
-        //     const q = new THREE.Quaternion().setFromUnitVectors(childJointLeft, limbDir);
-        //     firstBoneRotation.premultiply(q);
-        //     firstBoneRotation.premultiply(parentPoseRot); // Convert to bone's LS by multiplying the inverse rotation of the parent
+            const childJointLeft = new THREE.Vector3().crossVectors(firstDir, secondDir).normalize(); 
+            const q = new THREE.Quaternion().setFromUnitVectors(childJointLeft, limbDir);
+            // firstBoneRotation.premultiply(q);
+            const trgLeft = chain.alt_up.clone().cross(this.srcForward);
 
-        //     poseFirst.quaternion.copy(firstBoneRotation);
-        //     poseFirst.updateWorldMatrix(true, true);
-        //     // poseFirst
-        // }
+            let a = childJointLeft.angleTo(limbDir);
+            if(a <= EPSILON) {
+                a = 0;
+            }
+            else {
+                // let srcLeft = srcUp.cross(srcForward).normalize();
+                if(trgLeft.dot(this.srcUp) >= 0) {
+                // if(srcLeft.dot(trgUp) < 0) {
+                    a = -a;
+                }
+            }
+            firstBoneRotation.premultiply(new THREE.Quaternion().setFromAxisAngle(this.srcForward, -a))
+            firstBoneRotation.premultiply(parentInv); // Convert to bone's LS by multiplying the inverse rotation of the parent
+
+            poseFirst.quaternion.copy(firstBoneRotation);
+            // poseFirst.updateWorldMatrix(true, true);
+            
+
+            let arrowHelper = window.globals.app.scene.getObjectByName("a_" + chain.name );
+            if(!arrowHelper) {
+                arrowHelper = new THREE.ArrowHelper(childJointLeft, poseSecondPos, 0.2, "purple" );
+                arrowHelper.line.material = new THREE.LineDashedMaterial({color: "purple", scale: 1, dashSize: 0.1, gapSize: 0.1, depthTest: false})
+                arrowHelper.line.computeLineDistances();   
+                arrowHelper.name = "a_" + chain.name
+                window.globals.app.scene.add(arrowHelper);
+            }
+            else {
+                arrowHelper.setDirection(childJointLeft);
+                arrowHelper.position.copy(poseSecondPos);
+            }
+
+            arrowHelper = window.globals.app.scene.getObjectByName("b_" + chain.name);
+            if(!arrowHelper) {
+                arrowHelper = new THREE.ArrowHelper(limbDir, poseSecondPos, 0.2, "pink" );
+                arrowHelper.line.material = new THREE.LineDashedMaterial({color: "pink", scale: 1, dashSize: 0.1, gapSize: 0.1, depthTest: false})
+                arrowHelper.line.computeLineDistances();   
+                arrowHelper.name = "b_" + chain.name;
+                window.globals.app.scene.add(arrowHelper);
+            }
+            else {
+                arrowHelper.setDirection(limbDir);
+                arrowHelper.position.copy(poseSecondPos);
+            }
+
+            arrowHelper = window.globals.app.scene.getObjectByName("left_" + chain.name);
+            if(!arrowHelper) {
+                arrowHelper = new THREE.ArrowHelper(trgLeft, poseFirstPos, 0.2, "white" );
+                arrowHelper.line.material = new THREE.LineDashedMaterial({color: "white", scale: 1, dashSize: 0.1, gapSize: 0.1, depthTest: false})
+                arrowHelper.line.computeLineDistances();   
+                arrowHelper.name = "left_" + chain.name;
+                window.globals.app.scene.add(arrowHelper);
+            }
+            else {
+                arrowHelper.setDirection(trgLeft);
+                arrowHelper.position.copy(poseFirstPos);
+            }
+        }
     }
 
     multiSolver(pose, forward, up, srcdirection) {
@@ -1275,7 +1368,7 @@ class IKSolver {
 
         const chainLen = new THREE.Vector3().subVectors(chain.target.position, poseFirstPos).length();
 
-        const hbindSecondLen = bindSecondLen*0.7;
+        const hbindSecondLen = bindSecondLen*0.8;
         const t = (bindFirstLen + hbindSecondLen) / (bindFirstLen + bindSecondLen + bindEndLen); // how much to subduvude the target length
         const tBindFirstLen = chainLen * t; // A to B
         const tBindSecondLen = chainLen - tBindFirstLen; // B to C
@@ -1292,7 +1385,10 @@ class IKSolver {
         // Use the target's X axis for rotation along with the angle from SSS
         rotation.premultiply(new THREE.Quaternion().setFromAxisAngle(this.srcLeft, -angle));
         let rotationLS = rotation.clone();
-        rotationLS.premultiply(parentPoseRot.invert()); // Convert to bone's LS by multiplying the inverse rotation of the parent
+        let firstRot = rotation.clone();
+
+        const parentInv = parentPoseRot.invert();
+        rotationLS.premultiply(parentInv); // Convert to bone's LS by multiplying the inverse rotation of the parent
 
         poseFirst.quaternion.copy(rotationLS);
         poseFirst.updateWorldMatrix(true, true);
@@ -1320,6 +1416,10 @@ class IKSolver {
 
         poseEnd.quaternion.copy(rotationLS);
         poseEnd.updateWorldMatrix(true, true);
+
+        // firstRot.premultiply(new THREE.Quaternion().setFromAxisAngle(this.srcLeft, -angle))
+        // firstRot.premultiply(parentInv);
+        // poseFirst.quaternion.copy(firstRot);
     }
 
     aimBone(boneIdx, srcForward, srcUp) {

@@ -18,7 +18,7 @@ class App {
         this.loaderGLB = new GLTFLoader();
         this.loadedCharacters = {};
         this.sourceName = "bmlTest.glb";
-        this.targetName = "mixamo.glb";
+        this.targetName = "ReadyPlayerEva.glb";
 
         this.playing = false;
     }
