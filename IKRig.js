@@ -4,6 +4,7 @@ import { applyTPose } from './retargeting.js';
 // O(nm)
 function findIndexOfBoneByName( skeleton, name ){
     if ( !name ){ return -1; }
+    name = name.replace( "mixamorig_", "" ).replace("mixamorig:", "").replace( "mixamorig", "" );
     let b = skeleton.bones;
     for( let i = 0; i < b.length; ++i ){
         if ( b[i].name.replace( "mixamorig_", "" ).replace("mixamorig:", "").replace( "mixamorig", "" ) == name ){ return i; }

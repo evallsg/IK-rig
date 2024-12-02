@@ -1,11 +1,8 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { FABRIKSolver, CCDIKSolver } from './IKSolver.js'
 import { IKCompute, IKRig, IKPose, IKSolver, IKVisualize } from './IKRig.js';
-import { BipedRig } from './IKRigs.js'
-import { BipedFBIK } from './FullBodyIK.js';
 
 const FORWARD = new THREE.Vector3(0,0,1);
 const UP =  new THREE.Vector3(0,1,0);
@@ -20,7 +17,7 @@ class App {
         this.clock = new THREE.Clock();
         this.loaderGLB = new GLTFLoader();
         this.loadedCharacters = {};
-        this.sourceName = "nabba.gltf";
+        this.sourceName = "bmlTest.glb";
         this.targetName = "ReadyPlayerEva.glb";
 
         this.playing = false;
@@ -34,87 +31,130 @@ class App {
 
             // this.initRig(this.sourceName, true);
             const source = this.loadedCharacters[this.sourceName];
+            let rig = new IKRig();
             
-            this.srcRig = new BipedRig();
-            let skeleton = cloneRawSkeleton( source.skeleton, 0, true);
-            this.srcRig.autorig(skeleton);
-            this.srcRig.useSolversForFBIK( skeleton );
+            rig.init(source.skeleton, true, true, this.sourceName == 'Woman.glb' ? 0 : 1);
 
-            this.ikRig = new BipedFBIK( this.srcRig );
-            this.ikRig.bindPose( skeleton, true );
-            this.ikRig.defineRenderLines();
+            if(this.sourceName == 'Woman.glb') {
+                rig.addPoint( "hip", "Hips" )
+                rig.addPoint( "head", "Head" )
+                rig.addPoint( "neck", "Neck" )
+                rig.addPoint( "chest", "Spine2" )
+                rig.addPoint( "foot_l", "LeftFoot" )
+                rig.addPoint( "foot_r", "RightFoot" )
+            
+                rig.addChain( "arm_r", [ "RightArm", "RightForeArm" ],  "RightHand")
+                rig.addChain( "arm_l", [ "LeftArm", "LeftForeArm" ], "LeftHand") 
+            
+                rig.addPoint( "hand_r", "RightHand");
+                rig.addPoint( "hand_l", "LeftHand");
 
-            for(let i = 0; i < this.ikRig.lines.length; i++) {
-                this.scene.add(this.ikRig.lines[i]);
+                rig.addChain( "leg_r", [ "RightUpLeg", "RightLeg" ], "RightFoot")
+                rig.addChain( "leg_l", [ "LeftUpLeg", "LeftLeg" ], "LeftFoot")
+            
+                rig.addChain( "spine", [ "Spine", "Spine1", "Spine2" ] ) //, "y"
+                
+                rig.addChain( "thumb_r", [ "RightHandThumb1", "RightHandThumb2", "RightHandThumb3" ], "RightHandThumb4", true ) //, "y"
+                rig.addChain( "index_r", [ "RightHandIndex1", "RightHandIndex2", "RightHandIndex3" ], "RightHandIndex4", true ) //, "y"
+                
+                rig.addChain( "thumb_l", [ "LeftHandThumb1", "LeftHandThumb2", "LeftHandThumb3" ], "LeftHandThumb4", true ) //, "y"
+                rig.addChain( "index_l", [ "LeftHandIndex1", "LeftHandIndex2", "LeftHandIndex3" ], "LeftHandIndex4", true ) //, "y"
+               
+                
+            
+                // Set Direction of Joints on th Limbs   
+                rig.setAlternatives( "leg_l", DOWN, FORWARD, rig.tpose );
+                rig.setAlternatives( "leg_r", DOWN, FORWARD, rig.tpose );
+                rig.setAlternatives( "arm_l", LEFT, BACK, rig.tpose );
+                rig.setAlternatives( "arm_r", RIGHT, BACK, rig.tpose );
+                rig.setAlternatives( "thumb_r", RIGHT, FORWARD, rig.tpose );
+                rig.setAlternatives( "index_r", RIGHT, UP, rig.tpose );
+              
+                rig.setAlternatives( "thumb_l", LEFT, UP, rig.tpose );
+                rig.setAlternatives( "index_l", LEFT, UP, rig.tpose );
+              
             }
 
-            let geometry = new THREE.SphereGeometry(0.1, 32, 16 ); 
-            let material = new THREE.MeshNormalMaterial( { color: 'red' } ); 
+            source.IKPose = new IKPose();
+            source.IKrig = rig;
+            IKCompute.run(rig, source.IKPose);
+            IKVisualize.run(rig, source.IKPose, this.scene, this.sourceName);
 
-            this.controlPoints = [];
-            for(let i = 0; i < this.ikRig.skeleton.points.length; i++) {
-                const point = this.ikRig.skeleton.points[i];
-                const sphere = this.controller = new THREE.Mesh( geometry, material );
-                sphere.position.copy(point.position) 
-                sphere.scale.set(0.1,0.1,0.1);
-                this.scene.add( sphere );
-                sphere.pointId = i;
-                this.controlPoints.push(sphere);
-            }
+            this.loadAvatar("./data/" +this.targetName, this.targetName, false, () => {
+                this.loadedCharacters[this.targetName].model.position.x = 0.5;
 
-            this.ikRig.updateRigTargets();
-            
-         
-            this.controller =  new TransformControls( this.camera, this.renderer.domElement );
-            this.controller.addEventListener( 'dragging-changed',  ( event ) => { 
-                this.controls.enabled = ! event.value; 
-            } );
-            this.controller.addEventListener( 'objectChange',  ( event ) => { 
-                this.updatePose(event.target.object.pointId);
-            } );
-          
-            this.controller.size = 0.3;
-            this.controller.name = "control";
-            // this.controller.mode = "rotate";
-            this.scene.add( this.controller  );
+                const current = this.loadedCharacters[this.targetName];
+                let crig = new IKRig();
+                current.skeleton.pose();
+                crig.init(current.skeleton, true, true, this.targetName == "robo_trex" ? 0 : 1);
 
-            // this.updatePose();
-            window.addEventListener("mousedown", this.checkCollision.bind(this));
-            this.animate();
-        });
-    }
+                if(this.targetName == "robo_trex") {
+                    crig.addPoint( "hip", "hip" )
+                    crig.addPoint( "head", "face_joint" )
+                    crig.addPoint( "foot_l", "LeftFoot" )
+                    crig.addPoint( "foot_r", "RightFoot" )
 
-    checkCollision( event ) {
-        const raycaster = new THREE.Raycaster();
-        const pointer = new THREE.Vector2();
+                    crig.addPoint( "wing_l", "left_wing" )
+                    crig.addPoint( "wing_r", "right_wing" )
 
-        pointer.x = ( event.clientX / window.innerWidth ) * 2 - 1;
-	    pointer.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
-        
-        raycaster.setFromCamera( pointer, this.camera );
-        const intersects = raycaster.intersectObjects( this.controlPoints );
+                    crig.addChain( "leg_r", [ "RightUpLeg", "RightKnee", "RightShin" ], "RightFoot", "three_bone" ) //"z", 
+                    crig.addChain( "leg_l", [ "LeftUpLeg", "LeftKnee", "LeftShin" ], "LeftFoot", "three_bone" ) // "z", 
+                    crig.addChain( "spine", [ "Spine", "Spine1" ] )
+                    crig.addChain( "tail", ["tail_1","tail_2","tail_3","tail_4","tail_5","tail_6","tail_7"] )
+                    // .set_leg_lmt( null, -0.1 )
+                }
+                current.IKPose = new IKPose();
+                
+                current.IKrig = crig;
+                
+                source.IKPose.applyRig(crig, current.IKPose);
+                // var boneContainer = new THREE.Group();
+                // boneContainer.add( crig.tpose.bones[ 0 ] );
+                // const skeletonHelper = new THREE.SkeletonHelper(crig.tpose.bones[0]);
+                // window.globals.app.scene.add(boneContainer);
+                // window.globals.app.scene.add(skeletonHelper);
+                // IKCompute.run(crig, current.IKPose);
+                if(crig.ikSolver) {
+                    crig.ikSolver.update();
+                }
+                IKVisualize.run(crig, current.IKPose, this.scene, this.targetName);
+                // current.model.position.y = 1.5;
+                // current.model.position.z = -1.5;
+                // current.model.position.x = -1.5;
+                this.animate();
 
-        for ( let i = 0; i < intersects.length; i ++ ) {
+                window.addEventListener("keyup", (event) => {
+                    switch(event.key) {
+                        case " ":
+                            this.playing = !this.playing;
+                            if(this.playing) {
+                                this.retarget();
+                            }
+                            break;
+                    
+                        case "Escape":
+                            this.mixer.setTime(0);
+                            this.retarget();
+                            break;
+                        
+                        case "ArrowRight":
+                            this.mixer.update(0.01);
+                            this.retarget();
+                            break;
 
-            this.controller.attach( intersects[ i ].object );
-        }
-    }
+                        case "ArrowLeft":
+                            this.mixer.update(-0.01);
+                            this.retarget();
+                            break;
+                        case "p":
+                        this.loadedCharacters[this.sourceName].skeleton.pose();
+                        this.retarget();
+                        break;
+                    }                    
+                })
+            })
+        },);
 
-    updatePose(idx) {
-        if(idx == undefined) {
-            return;
-        }
-        const source = this.loadedCharacters[this.sourceName];
-        const point = this.ikRig.skeleton.points[idx];
-        this.ikRig.skeleton.setPosition(idx, this.controller.position);
-        if( !point.isPole ) {
-            this.ikRig.resolve();
-        }
-        else {
-            this.ikRig.resolveForPole( idx );
-        }
-        this.ikRig.updateRigTargets();
-        this.srcRig.resolveToPose( source.skeleton );
     }
 
     initScene() {
@@ -260,8 +300,8 @@ class App {
                 //     }
                 // }
                 // glb.animations[0].tracks = tracks;
-                // this.mixer = new THREE.AnimationMixer(skeleton.bones[0]);
-                // this.mixer.clipAction(glb.animations[0]).setEffectiveWeight(1.0).play();
+                this.mixer = new THREE.AnimationMixer(skeleton.bones[0]);
+                this.mixer.clipAction(glb.animations[0]).setEffectiveWeight(1.0).play();
                 // this.mixer.update(0.1);
             }
 
@@ -292,107 +332,24 @@ class App {
     }
 
     update(dt) {
-        // IKCompute.run(this.loadedCharacters[this.sourceName].IKrig, this.loadedCharacters[this.sourceName].IKPose)
-        //IKCompute.run(this.rig, this.loadedCharacters[this.sourceName].IKPose);
-
-        // this.loadedCharacters[this.sourceName].IKPose.applyRig(this.rig);
+        if(this.mixer && this.playing) {
+            this.mixer.update(dt*0.5);
+            this.retarget();
+        }
     }
 
-    
+    retarget() {
+        IKCompute.run(this.loadedCharacters[this.sourceName].IKrig, this.loadedCharacters[this.sourceName].IKPose);
+        IKVisualize.run(this.loadedCharacters[this.sourceName].IKrig, this.loadedCharacters[this.sourceName].IKPose, this.scene, this.sourceName);
+        this.loadedCharacters[this.sourceName].IKPose.applyRig(this.loadedCharacters[this.targetName].IKrig);
+        
+        if(this.loadedCharacters[this.targetName].IKrig.ikSolver) {
+            this.loadedCharacters[this.targetName].IKrig.ikSolver.update();
+        }
+        // IKCompute.run(this.loadedCharacters[this.targetName].IKrig, this.loadedCharacters[this.targetName].IKPose);
+
+        IKVisualize.run(this.loadedCharacters[this.targetName].IKrig, this.loadedCharacters[this.targetName].IKPose, this.scene, this.targetName);
+    }
 }
 
 export {App}
-
-
- /**
-     * creates a Transform object with identity values
-     * @returns Transform
-     */
- function _newTransform(){ return { p: new THREE.Vector3(0,0,0), q: new THREE.Quaternion(0,0,0,1), s: new THREE.Vector3(1,1,1) }; }
-
- /**
-  * Deep clone of the skeleton. New bones are generated. Skeleton's parent objects will not be linked to the cloned one
-  * Returned skeleton has new attributes: 
-  *  - Always: .parentIndices, .transformsWorld, .transformsWorldInverses
-  *  - embedWorld == true:  .transformsWorldEmbedded
-  * @param {THREE.Skeleton} skeleton 
-  * @returns {THREE.Skeleton}
-  */
- const CURRENT = 1;
- function cloneRawSkeleton( skeleton, poseMode, embedWorld = false ) {
-     let bones = skeleton.bones;
-    
-     let resultBones = new Array( bones.length );
-     let parentIndices = new Int16Array( bones.length );
-
-     // bones[0].clone( true ); // recursive
-     for( let i = 0; i < bones.length; ++i ){
-         resultBones[i] = bones[i].clone(false);
-         resultBones[i].parent = null;
-     }
-     
-     for( let i = 0; i < bones.length; ++i ){
-         let parentIdx = findIndexOfBone( skeleton, bones[i].parent )
-         if ( parentIdx > -1 ){ resultBones[ parentIdx ].add( resultBones[ i ] ); }
-         
-         parentIndices[i] = parentIdx;
-     }
-
-     resultBones[0].updateWorldMatrix( false, true ); // assume 0 is root. Update all global matrices (root does not have any parent)
-     
-     // generate skeleton
-     let resultSkeleton;
-     switch(poseMode) {
-         case CURRENT: 
-             resultSkeleton = new THREE.Skeleton( resultBones ); // will automatically compute the inverses from the matrixWorld of each bone               
-             
-             break;
-         default:
-             let boneInverses = new Array( skeleton.boneInverses.length );
-             for( let i = 0; i < boneInverses.length; ++i ) { 
-                 boneInverses[i] = skeleton.boneInverses[i].clone(); 
-             }
-             resultSkeleton = new THREE.Skeleton( resultBones, boneInverses );
-             resultSkeleton.pose();
-             break;
-     }
-     
-     resultSkeleton.parentIndices = parentIndices; // add this attribute to the THREE.Skeleton class
-
-     // precompute transforms (forward and inverse) from world matrices
-     let transforms = new Array( skeleton.bones.length );
-     let transformsInverses = new Array( skeleton.bones.length );
-     for( let i = 0; i < transforms.length; ++i ){
-         let t = _newTransform();
-         resultSkeleton.bones[i].matrixWorld.decompose( t.p, t.q, t.s );
-         transforms[i] = t;
-         
-         t = _newTransform();
-         resultSkeleton.boneInverses[i].decompose( t.p, t.q, t.s );
-         transformsInverses[i] = t;
-     }
-     resultSkeleton.transformsWorld = transforms;
-     resultSkeleton.transformsWorldInverses = transformsInverses;
-
-     // embedded transform
-     if ( embedWorld && bones[0].parent ){
-         let embedded = { forward: _newTransform(), inverse: _newTransform() };
-         let t = embedded.forward;
-         bones[0].parent.updateWorldMatrix( true, false );
-         bones[0].parent.matrixWorld.decompose( t.p, t.q, t.s );
-         t = embedded.inverse;
-         skeleton.bones[0].parent.matrixWorld.clone().invert().decompose( t.p, t.q, t.s );
-         resultSkeleton.transformsWorldEmbedded = embedded;
-     }
-     return resultSkeleton;
- }
-
- // O(n)
-function findIndexOfBone( skeleton, bone ){
-    if ( !bone ){ return -1;}
-    let b = skeleton.bones;
-    for( let i = 0; i < b.length; ++i ){
-        if ( b[i] == bone ){ return i; }
-    }
-    return -1;
-}
