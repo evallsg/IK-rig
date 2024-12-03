@@ -10,15 +10,15 @@ class SwingTwistSolver {
         
         this.effectorScale = 1;
         this.effectorPosition = new THREE.Vector3();
-        this.effectorDirection = new THREE.Vector3();
-        this.poleDirection = new THREE.Vector3(); // Direction that handles the twisting rotation
-        this.crossDirection = new THREE.Vector3(); // Direction that handles the bending rotation (elbow, knees...)
+        this.effectorDirection = new THREE.Vector3(0, 0, 1);
+        this.poleDirection = new THREE.Vector3(1, 0, 0); // Direction that handles the twisting rotation
+        this.crossDirection = new THREE.Vector3(1, 0, 0); // Direction that handles the bending rotation (elbow, knees...)
     }
 
     init( pose, chain ) {
         if( pose && chain) {
             const origin = chain.bonesInfo[0];
-            let rotation = pose.bones[origin.idx].getWorldQuaternion(new THREE.Vector3());
+            let rotation = pose.bones[origin.idx].getWorldQuaternion(new THREE.Quaternion());
             if(pose.transformsWorldEmbedded) {
                 rotation.premultiply(pose.transformsWorldEmbedded.forward.q)
             }
@@ -28,6 +28,7 @@ class SwingTwistSolver {
 
             this.setTargetDirection( effector, pole);
         }
+        return this;
     }
 
     setTargetPosition( effector, pole) {
@@ -42,7 +43,7 @@ class SwingTwistSolver {
 
     setTargetDirection( effector, pole, effectorScale = null) {
         this.isTargetPosition = false;
-        this.effectorDirection.copy(effector);
+        this.effectorDirection.copy(effector).normalize();
         
         if( pole ) {
             this.setTargetPole( pole );
@@ -55,7 +56,7 @@ class SwingTwistSolver {
     }
 
     setTargetPole( pole ) {
-        this.originPoleDirection.copy(pole);
+        this.originPoleDirection.copy(pole).normalize();
         return this;
     }
 
@@ -82,8 +83,8 @@ class SwingTwistSolver {
 
         parentMat.decompose(parentPos, parentRot, parentScale);
         // Get Bone's BindPose position in relation to this pose
-        const mat = new THREE.Matrix4().compose(ikBone.bindTransform.position, ikBone.bindTransform.quaternion, ikBone.bindTransform.scale);
-        mat.multiply(parentMat);
+        const mat = new THREE.Matrix4().compose(ikBone.bindTransform.local.position, ikBone.bindTransform.local.quaternion, ikBone.bindTransform.local.scale);
+        mat.premultiply(parentMat);
         let pos = new THREE.Vector3();
         let rot = new THREE.Quaternion();
         mat.decompose(pos, rot, new THREE.Vector3());
@@ -116,30 +117,32 @@ class SwingTwistSolver {
             this.effectorPosition = new THREE.Vector3().addVectors( this.originPosition, this.effectorDirection.clone().multiplyScalar( chain.length * this.effectorScale));
         }
 
-        let arrowHelper = window.globals.app.scene.getObjectByName("target" );
-        if(!arrowHelper) {
-            arrowHelper = new THREE.ArrowHelper(direction, pos, 0.2, "pink" );
-            arrowHelper.line.material = new THREE.LineBasicMaterial({color: "pink", scale: 1, dashSize: 0.1, gapSize: 0.1, depthTest: false})
-            arrowHelper.line.computeLineDistances();   
-            arrowHelper.name = "target";
-            window.globals.app.scene.add(arrowHelper);
-        }
-        else {
-            arrowHelper.setDirection(direction);
-            arrowHelper.position.copy(pos);
-        }
-
-        arrowHelper = window.globals.app.scene.getObjectByName("otarget" );
-        if(!arrowHelper) {
-            arrowHelper = new THREE.ArrowHelper(this.effectorDirection, pos, 0.2, "red" );
-            arrowHelper.line.material = new THREE.LineBasicMaterial({color: "red", scale: 1, dashSize: 0.1, gapSize: 0.1, depthTest: false})
-            arrowHelper.line.computeLineDistances();   
-            arrowHelper.name = "otarget";
-            window.globals.app.scene.add(arrowHelper);
-        }
-        else {
-            arrowHelper.setDirection(this.effectorDirection);
-            arrowHelper.position.copy(pos);
+        if(debug) {
+            let arrowHelper = window.globals.app.scene.getObjectByName("target" );
+            if(!arrowHelper) {
+                arrowHelper = new THREE.ArrowHelper(direction, pos, 0.2, "pink" );
+                arrowHelper.line.material = new THREE.LineBasicMaterial({color: "pink", scale: 1, dashSize: 0.1, gapSize: 0.1, depthTest: false})
+                arrowHelper.line.computeLineDistances();   
+                arrowHelper.name = "target";
+                window.globals.app.scene.add(arrowHelper);
+            }
+            else {
+                arrowHelper.setDirection(direction);
+                arrowHelper.position.copy(pos);
+            }
+    
+            arrowHelper = window.globals.app.scene.getObjectByName("otarget" );
+            if(!arrowHelper) {
+                arrowHelper = new THREE.ArrowHelper(this.effectorDirection, pos, 0.2, "red" );
+                arrowHelper.line.material = new THREE.LineBasicMaterial({color: "red", scale: 1, dashSize: 0.1, gapSize: 0.1, depthTest: false})
+                arrowHelper.line.computeLineDistances();   
+                arrowHelper.name = "otarget";
+                window.globals.app.scene.add(arrowHelper);
+            }
+            else {
+                arrowHelper.setDirection(this.effectorDirection);
+                arrowHelper.position.copy(pos);
+            }
         }
         //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         return [ swing, parentRot ];
@@ -311,7 +314,7 @@ class HipSolver {
         parentMat.decompose(parentPos, parentRot, parentScale);
         
         // Get Bone's BindPose position in relation to this pose
-        const mat = new THREE.Matrix4().compose(ikBone.bindTransform.position, ikBone.bindTransform.quaternion, ikBone.bindTransform.scale);
+        const mat = new THREE.Matrix4().compose(ikBone.bindTransform.local.position, ikBone.bindTransform.local.quaternion, ikBone.bindTransform.local.scale);
         mat.multiply(parentMat);
         let pos = new THREE.Vector3();
         let rot = new THREE.Quaternion();
@@ -347,7 +350,96 @@ class HipSolver {
     }
 }
 
-export { SwingTwistSolver, HipSolver }
+class LimbSolver extends SwingTwistBase {
+    constructor( ) {
+        super();
+        this.bendDirection = 1; // Switching to Negative will flip the rotation arc
+    }
+
+    invertBend( ) {
+        this.bendDirection *= -1;
+    }
+
+    resolve( chain, pose, debug = false) {
+        // Target the bone towards the end effector
+        const [rotation, parentRot] = this.solver.getWorldRotation(chain, pose, debug);
+
+        const firstBoneInfo = chain.bonesInfo[0];
+        const secondBoneInfo = chain.bonesInfo[1];
+
+        const firstBone = pose.bones[firstBoneInfo.idx];
+        const secondBone = pose.bones[secondBoneInfo.idx];
+        
+        let parentPoseRot = firstBone.parent.getWorldQuaternion(new THREE.Quaternion());
+        let firstBonePos = firstBone.getWorldPosition(new THREE.Vector3());
+
+        if(pose.transformsWorldEmbedded) {
+            parentPoseRot.premultiply(pose.transformsWorldEmbedded.forward.q)
+            let cmat = new THREE.Matrix4().compose(pose.transformsWorldEmbedded.forward.p, pose.transformsWorldEmbedded.forward.q, pose.transformsWorldEmbedded.forward.s);
+            let mat = firstBone.matrixWorld.clone();
+            mat.premultiply(cmat);
+            mat.decompose(firstBonePos, new THREE.Quaternion(), new THREE.Vector3());
+        }
+
+        const firstLen = firstBoneInfo.length;
+        const secondLen = secondBoneInfo.length;
+        const chainLen = firstBonePos.distanceTo(this.solver.effectorPosition);
+
+        // FIRST BONE
+
+        // Get the angle between the first bone and the target (last bone)
+        let angle = lawCosSSS(firstLen, chainLen, secondLen);
+
+        // Use the target's X axis for rotation along with the angle from SSS
+        rotation.premultiply(new THREE.Quaternion().setFromAxisAngle(this.solver.crossDirection, -angle*this.bendDirection));
+        // To Local Space
+        let localRot = rotation.clone();
+        localRot.premultiply(parentRot.invert());
+        firstBone.quaternion.copy(localRot);
+
+        // SECOND BONE
+
+        // Rotate in the other direction
+        angle = Math.PI - lawCosSSS(firstLen, secondLen, chainLen);
+        
+        const invRot = rotation.clone().invert();
+        // Convert LS second bind bone rotation in the WS of the first current pose bone 
+        rotation.multiply(secondBoneInfo.bindTransform.local.quaternion);
+        rotation.premultiply(new THREE.Quaternion().setFromAxisAngle(this.solver.crossDirection, angle*this.bendDirection));
+        // To Local Space
+        rotation.premultiply(invRot);
+        secondBone.quaternion.copy(rotation);
+
+        if(debug) {
+            let arrowHelper = window.globals.app.scene.getObjectByName("target" );
+            if(!arrowHelper) {
+                arrowHelper = new THREE.ArrowHelper(this.solver.crossDirection, firstBonePos, 0.2, "pink" );
+                arrowHelper.line.material = new THREE.LineBasicMaterial({color: "pink", scale: 1, dashSize: 0.1, gapSize: 0.1, depthTest: false})
+                arrowHelper.line.computeLineDistances();   
+                arrowHelper.name = "target";
+                window.globals.app.scene.add(arrowHelper);
+            }
+            else {
+                arrowHelper.setDirection(this.solver.crossDirection);
+                arrowHelper.position.copy(firstBonePos);
+            }
+
+            arrowHelper = window.globals.app.scene.getObjectByName("otarget" );
+            if(!arrowHelper) {
+                arrowHelper = new THREE.ArrowHelper(this.solver.effectorDirection, firstBonePos, 0.2, "red" );
+                arrowHelper.line.material = new THREE.LineBasicMaterial({color: "red", scale: 1, dashSize: 0.1, gapSize: 0.1, depthTest: false})
+                arrowHelper.line.computeLineDistances();   
+                arrowHelper.name = "otarget";
+                window.globals.app.scene.add(arrowHelper);
+            }
+            else {
+                arrowHelper.setDirection(this.solver.effectorDirection);
+                arrowHelper.position.copy(firstBonePos);
+            }
+        }
+    }
+}
+export { SwingTwistSolver, HipSolver, LimbSolver }
 
 function invertTransform( pos, quat, scl) {
     // Invert Rotation
@@ -369,4 +461,16 @@ function transformVector3( pos, quat, scl, vector) {
     v.applyQuaternion(quat);
 
     return v.add(pos);
+}
+
+// Law of cosines SSS: To find an angle of a triangle when all rhree length sides are known (https://mathsisfun.com/algebra/trig-cosine-law.html)
+function lawCosSSS(a,b,c) {
+    let v = (Math.pow(a,2) + Math.pow(b,2) - Math.pow(c,2)) / (2*a*b);
+    if(v > 1) {
+        v = 1;
+    }
+    else if ( v < -1) {
+        v = -1;
+    }
+    return Math.acos(v);
 }

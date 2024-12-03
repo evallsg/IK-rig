@@ -44,12 +44,18 @@ class App {
             this.ikRig.bindPose( skeleton, true );
             this.ikRig.defineRenderLines();
 
+            this.lines = [];
+            
+            const lmaterial = new THREE.LineBasicMaterial( { color: 0x0000ff, depthTest: false } );
             for(let i = 0; i < this.ikRig.lines.length; i++) {
-                this.scene.add(this.ikRig.lines[i]);
+                const geometry = new THREE.BufferGeometry().setFromPoints( [this.ikRig.lines[i][0].position, this.ikRig.lines[i][1].position] );
+                const line = new THREE.Line( geometry, lmaterial );
+                this.lines.push(line);
+                this.scene.add(line);
             }
 
             let geometry = new THREE.SphereGeometry(0.1, 32, 16 ); 
-            let material = new THREE.MeshNormalMaterial( { color: 'red' } ); 
+            let material = new THREE.MeshNormalMaterial( { color: 'red', depthTest: false } ); 
 
             this.controlPoints = [];
             for(let i = 0; i < this.ikRig.skeleton.points.length; i++) {
@@ -62,15 +68,15 @@ class App {
                 this.controlPoints.push(sphere);
             }
 
+            this.ikRig.resolve();
             this.ikRig.updateRigTargets();
-            
          
             this.controller =  new TransformControls( this.camera, this.renderer.domElement );
             this.controller.addEventListener( 'dragging-changed',  ( event ) => { 
                 this.controls.enabled = ! event.value; 
             } );
             this.controller.addEventListener( 'objectChange',  ( event ) => { 
-                this.updatePose(event.target.object.pointId);
+                this.updatePose(event.target.object.pointId, event.target.object.position);
             } );
           
             this.controller.size = 0.3;
@@ -97,16 +103,18 @@ class App {
         for ( let i = 0; i < intersects.length; i ++ ) {
 
             this.controller.attach( intersects[ i ].object );
+            const point = this.ikRig.skeleton.points[intersects[ i ].object.pointId];
+            console.log(point.name)
         }
     }
 
-    updatePose(idx) {
+    updatePose(idx, position) {
         if(idx == undefined) {
             return;
         }
         const source = this.loadedCharacters[this.sourceName];
         const point = this.ikRig.skeleton.points[idx];
-        this.ikRig.skeleton.setPosition(idx, this.controller.position);
+        this.ikRig.skeleton.setPosition(idx, position);
         if( !point.isPole ) {
             this.ikRig.resolve();
         }
@@ -114,7 +122,11 @@ class App {
             this.ikRig.resolveForPole( idx );
         }
         this.ikRig.updateRigTargets();
-        this.srcRig.resolveToPose( source.skeleton );
+        this.srcRig.resolveToPose( source.skeleton, true );
+
+        for(let i = 0; i < this.ikRig.lines.length; i++) {            
+            this.lines[i].geometry.setFromPoints([this.ikRig.lines[i][0].position, this.ikRig.lines[i][1].position]);
+        }        
     }
 
     initScene() {

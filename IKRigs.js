@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { IKChain } from './IKChain.js';
-import { HipSolver } from './IKSolvers.js'
+import { HipSolver, LimbSolver, SwingTwistSolver } from './IKSolvers.js'
 import { findIndexOfBoneByName } from './retargeting.js';
 
 const FORWARD = new THREE.Vector3(0, 0, 1);
@@ -245,8 +245,8 @@ class BipedRig extends IKRig {
             "head": { ch: ["head"] },
             "rightHand": { ch: ["lefthand"] },
             "handR": { ch: ["righthand"] },
-            "leftFoot": { ch: ["leftfoot"] },
-            "rightFoot": { ch: ["rightfoot"] }
+            "leftFoot": { ch: ["footl"] },
+            "rightFoot": { ch: ["footr"] }
         };
 
         for (let name in chains) {
@@ -313,7 +313,7 @@ class BipedRig extends IKRig {
 
      /** Use Solver Configuration for Fullbody IK */
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    useSolversForFBIK( pose) {
+    useSolversForFBIK( pose ) {
         if( this.hip ) {
             this.hip.setSolver( new HipSolver().init( pose, this.hip ) );
         }
@@ -326,18 +326,18 @@ class BipedRig extends IKRig {
         // if( this.rightArm ) {
         //     this.rightArm.setSolver( new LimbSolver().init( pose, this.rightArm ) );
         // }
-        // if( this.leftLeg ) {
-        //     this.leftLeg.setSolver( new LimbSolver().init( pose, this.leftLeg ) );
-        // }
-        // if( this.rightLeg ) {
-        //     this.rightLeg.setSolver( new LimbSolver().init( pose, this.rightLeg ) );
-        // }
-        // if( this.leftFoot ) {
-        //     this.leftFoot.setSolver( new SwingTwistSolver().init( pose, this.leftFoot ) );
-        // }
-        // if( this.rightFoot ) {
-        //     this.rightFoot.setSolver( new SwingTwistSolver().init( pose, this.rightFoot ) );
-        // }
+        if( this.leftLeg ) {
+            this.leftLeg.setSolver( new LimbSolver().init( pose, this.leftLeg ) );
+        }
+        if( this.rightLeg ) {
+            this.rightLeg.setSolver( new LimbSolver().init( pose, this.rightLeg ) );
+        }
+        if( this.leftFoot ) {
+            this.leftFoot.setSolver( new SwingTwistSolver().init( pose, this.leftFoot ) );
+        }
+        if( this.rightFoot ) {
+            this.rightFoot.setSolver( new SwingTwistSolver().init( pose, this.rightFoot ) );
+        }
         // if( this.leftHand ) {
         //     this.leftHand.setSolver( new SwingTwistSolver().init( pose, this.leftHand ) );
         // }

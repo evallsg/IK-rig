@@ -29,8 +29,12 @@ class IKPoint {
                 this.position.y = config.position.y;
                 this.position.z = config.position.z;
             }
+            if (config.name) {
+                this.name = config.name;
+            }
         }
     }
+
     setPosition(position) {
         this.position.x = position.x;
         this.position.y = position.y;
@@ -173,23 +177,22 @@ class LimbCage {
         return this;
     }
 
-    getTailPos( ) { 
-        return this.pTail.pos;
+    getTailPosition( ) { 
+        return this.pTail.position;
     }
 
-    getPoleDir( poleDirection ) {
-        const v0 = THREE.Vector3().subVectors( this.pTail.position, this.pHead.position ).normalize();   // Fwd
-        const v1 = THREE.Vector3().subVectors( this.pPole.position, this.pHead.position ).normalize();   // Up
+    getPoleDirection( poleDirection ) {
+        const v0 = new THREE.Vector3().subVectors( this.pTail.position, this.pHead.position ).normalize();   // Fwd
+        const v1 = new THREE.Vector3().subVectors( this.pPole.position, this.pHead.position ).normalize();   // Up
 
-        if( v0,dot( v1 ) < 0.999 ){
-            const v2 = THREE.Vector3().crossVectors( v1, v0 );    // Lft
+        if( v0.dot( v1 ) < 0.999 ){
+            const v2 = new THREE.Vector3().crossVectors( v1, v0 ).normalize();    // Lft
             v1.crossVectors( v0, v2 ).normalize(); // Orthogonal Up
             poleDirection.copy(v1);
             this.prevPole.copy(v1);
         } else {
             poleDirection.copy( this.prevPole );
         }
-
         return poleDirection;
     }
 
@@ -199,6 +202,69 @@ class LimbCage {
     }
 }
 
+class TriExtCage {
+    constructor(skeleton, pHead, useEffFromPole = false) {
+        this.useEffFromPole = false;
+        this.constraints = [];
+        this.pHead = pHead;
+        this.pEffector = skeleton.newPoint({ mass: 1, pole: true });
+        this.pPole = skeleton.newPoint({ mass: 1, pole: true });
+        this.useEffFromPole = useEffFromPole;
+        this.constraints.push(new DistanceConstraint(pHead, this.pEffector), new DistanceConstraint(this.pEffector, this.pPole), new DistanceConstraint(this.pPole, pHead));
+    }
+
+    setPoleOffset(position, effectorOffset, poleOffset) {
+        if (this.useEffFromPole) {
+            position.add(poleOffset);
+            this.pPole.position.copy(position);
+
+            position.add(effectorOffset);
+            this.pEffector.position.copy(position);
+        } 
+        else {
+            position.add(poleOffset)
+            this.pPole.position.copy(position);
+            
+            position.add(effectorOffset)
+            this.pEffector.position.copy(position);
+        }
+        return this;
+    }
+    
+    rebind( ) {
+        for (let c of this.constraints) {
+            c.rebind();
+        }
+    }
+
+    resolve( ) {
+        let chg = false;
+        for (let c of this.constraints) { {
+            if (c.resolve()) {
+                    chg = true;
+                }
+            }
+        }
+        return chg;
+    }
+
+    poleMode( isOn ) {
+        this.pHead.isPinned = isOn;
+        return this;
+    }
+
+    getAxis( effDirection, poleDirection ) {
+    
+        if (this.useEffFromPole) {
+            poleDirection.subVectors(this.pHead.position, this.pPole.position).normalize();
+            effDirection.subVectors(this.pEffector.position, this.pPole.position).normalize();
+        } 
+        else {
+            poleDirection.subVectors(this.pPole.position, this.pHead.position).normalize();
+            effDirection.subVectors(this.pEffector.position, this.pHead.position).normalize();
+        }
+    }
+};
 
 // Force a distance between Two Points
 class DistanceConstraint {
@@ -334,6 +400,7 @@ class BipedFBIK {
     build( ) {
         const t = {};
         for( let k in Biped_Config ){
+            Biped_Config[ k ].name = k;
             t[ k ] = this.skeleton.newPoint( Biped_Config[ k ] );
         }
 
@@ -341,11 +408,11 @@ class BipedFBIK {
 
         // this.armL   = s.newLimbCage( t.armL_head, t.armL_pole, t.armL_tail ).setPrevPole( [0,0,-1] );
         // this.armR   = s.newLimbCage( t.armR_head, t.armR_pole, t.armR_tail ).setPrevPole( [0,0,-1] );
-        this.legR   = this.skeleton.newLimbCage( t.legR_head, t.legR_pole, t.legR_tail ).setPrevPole( new THREE.Vector3(0,0,1) );
-        this.legL   = this.skeleton.newLimbCage( t.legL_head, t.legL_pole, t.legL_tail ).setPrevPole( new THREE.Vector3(0,0,1) );
+        this.rightLeg   = this.skeleton.newLimbCage( t.legR_head, t.legR_pole, t.legR_tail ).setPrevPole( new THREE.Vector3(0,0,1) );
+        this.leftLeg   = this.skeleton.newLimbCage( t.legL_head, t.legL_pole, t.legL_tail ).setPrevPole( new THREE.Vector3(0,0,1) );
 
-        // this.footL  = s.newTriExtCage( t.legL_tail, true );
-        // this.footR  = s.newTriExtCage( t.legR_tail, true );
+        this.leftFoot  = this.skeleton.newTriExtCage( t.legL_tail, true );
+        this.rightFoot  = this.skeleton.newTriExtCage( t.legR_tail, true );
 
         // this.handL  = s.newTriExtCage( t.armL_tail, false );
         // this.handR  = s.newTriExtCage( t.armR_tail, false );
@@ -378,27 +445,52 @@ class BipedFBIK {
 
     defineRenderLines( ) {
         //create a blue LineBasicMaterial
-        const material = new THREE.LineBasicMaterial( { color: 0x0000ff, depthTest: false } );
+        // const material = new THREE.LineBasicMaterial( { color: 0x0000ff, depthTest: false } );
 
-        let points = [ this.hipCage.pHead.position, this.hipCage.pLeft.position ];
-        let geometry = new THREE.BufferGeometry().setFromPoints( points );
-        this.lines.push(new THREE.Line( geometry, material ))
+        // let points = [ this.hipCage.pHead.position, this.hipCage.pLeft.position ];
+        // let geometry = new THREE.BufferGeometry().setFromPoints( points );
+        // this.lines.push(new THREE.Line( geometry, material ))
 
-        points = [ this.hipCage.pHead.position, this.hipCage.pRight.position ];
-        geometry = new THREE.BufferGeometry().setFromPoints( points );
-        this.lines.push(new THREE.Line( geometry, material ))
+        // points = [ this.hipCage.pHead.position, this.hipCage.pRight.position ];
+        // geometry = new THREE.BufferGeometry().setFromPoints( points );
+        // this.lines.push(new THREE.Line( geometry, material ))
 
-        points = [ this.hipCage.pHead.position, this.hipCage.pPole.position ];
-        geometry = new THREE.BufferGeometry().setFromPoints( points );
-        this.lines.push(new THREE.Line( geometry, material ))
+        // points = [ this.hipCage.pHead.position, this.hipCage.pPole.position ];
+        // geometry = new THREE.BufferGeometry().setFromPoints( points );
+        // this.lines.push(new THREE.Line( geometry, material ))
 
-        points = [ this.hipCage.pHead.position, this.hipCage.pTail.position ];
-        geometry = new THREE.BufferGeometry().setFromPoints( points );
-        this.lines.push(new THREE.Line( geometry, material ))
+        // points = [ this.hipCage.pHead.position, this.hipCage.pTail.position ];
+        // geometry = new THREE.BufferGeometry().setFromPoints( points );
+        // this.lines.push(new THREE.Line( geometry, material ))
+
+        // points = [ this.leftLeg.pHead.position, this.leftLeg.pPole.position ];
+        // geometry = new THREE.BufferGeometry().setFromPoints( points );
+        // this.lines.push(new THREE.Line( geometry, material ))
+
+        // points = [ this.rightLeg.pHead.position, this.rightLeg.pPole.position ];
+        // geometry = new THREE.BufferGeometry().setFromPoints( points );
+        // this.lines.push(new THREE.Line( geometry, material ))
         // let points = [ this.head.pHead.position, this.head.pPole.position ];
         // points = [ this.head.pHead.position, this.head.pEff.position ];
         // points = [ this.head.pPole.position, this.head.pEff.position ];
 
+        let points = [ this.hipCage.pHead, this.hipCage.pLeft ];
+        this.lines.push(points);
+
+        points = [ this.hipCage.pHead, this.hipCage.pRight ];
+        this.lines.push(points);
+        
+        points = [ this.hipCage.pHead, this.hipCage.pPole ];        
+        this.lines.push(points);
+        
+        points = [ this.hipCage.pHead, this.hipCage.pTail ];
+        this.lines.push(points);
+
+        points = [ this.leftLeg.pHead, this.leftLeg.pPole ];
+        this.lines.push(points);
+
+        points = [ this.rightLeg.pHead, this.rightLeg.pPole ];        
+        this.lines.push(points);
     }
 
     bindPose( pose, resetConstraints = false, debug = false ) {
@@ -434,10 +526,21 @@ class BipedFBIK {
         }
 
         if( rig.rightLeg ) {
-            this._bindLimb( rig.rightLeg, pose, this.legR );
+            this._bindLimb( rig.rightLeg, pose, this.rightLeg );
         }
         if( rig.leftLeg ) {
-            this._bindLimb( rig.leftLeg, pose, this.legL );
+            this._bindLimb( rig.leftLeg, pose, this.leftLeg );
+        }
+
+        if (rig.leftFoot) {
+            const p1 = this.leftLeg.pTail.position;
+            const p2 = rig.leftFoot.getTailPosition(pose);
+            this.leftFoot.setPoleOffset(p1, new THREE.Vector3(0, 0, p2.z - p1.z), new THREE.Vector3(0, p2.y - p1.y, 0));
+        }
+        if (rig.rightFoot) {
+            const p1 = this.rightLeg.pTail.position;
+            const p2 = rig.rightFoot.getTailPosition(pose);
+            this.rightFoot.setPoleOffset(p1, new THREE.Vector3(0, 0, p2.z - p1.z), new THREE.Vector3(0, p2.y - p1.y, 0));
         }
 
         if( resetConstraints ) {
@@ -473,31 +576,36 @@ class BipedFBIK {
         //   cage2 = this.handR;
         // } else if (this.chestCage.pPole.idx == pIndex)
         //   cage = this.chestCage;
-        if (this.hipCage.pPole.idx == pIndex)
+        if (this.hipCage.pPole.idx == pIndex) {
             cage = this.hipCage;
-        // else if (this.legR.pPole.idx == pIndex) {
-        //   cage = this.legR;
-        //   cage2 = this.footR;
-        // } else if (this.legL.pPole.idx == pIndex) {
-        //   cage = this.legL;
-        //   cage2 = this.footL;
-        // } else if (this.head.pPole.idx == pIndex || this.head.pEff.idx == pIndex)
+        }
+        else if (this.rightLeg.pPole.idx == pIndex) {
+          cage = this.rightLeg;
+          cage2 = this.rightFoot;
+        }
+        else if (this.leftLeg.pPole.idx == pIndex) {
+          cage = this.leftLeg;
+          cage2 = this.leftFoot;
+        }
+        // else if (this.head.pPole.idx == pIndex || this.head.pEff.idx == pIndex)
         //   cage = this.head;
-        // else if (this.footL.pPole.idx == pIndex || this.footL.pEff.idx == pIndex)
-        //   cage = this.footL;
-        // else if (this.footR.pPole.idx == pIndex || this.footR.pEff.idx == pIndex)
-        //   cage = this.footR;
+        else if (this.leftFoot.pPole.idx == pIndex || this.leftFoot.pEffector.idx == pIndex) {
+            cage = this.leftFoot;
+        }
+        else if (this.rightFoot.pPole.idx == pIndex || this.rightFoot.pEffector.idx == pIndex) {
+            cage = this.rightFoot;
+        }
         // else if (this.handL.pPole.idx == pIndex || this.handL.pEff.idx == pIndex)
         //   cage = this.handL;
         // else if (this.handR.pPole.idx == pIndex || this.handR.pEff.idx == pIndex)
         //   cage = this.handR;
         else {
-            for (let c of this.spineCage) {
-            if (c.pPole.idx == pIndex) {
-                cage = c;
-                break;
-            }
-            }
+            // for (let c of this.spineCage) {
+            //     if (c.pPole.idx == pIndex) {
+            //         cage = c;
+            //         break;
+            //     }
+            // }
         }
         if (!cage) {
             console.warn("Can not found Verlet Cage that pole belongs to:", pIndex);
@@ -553,22 +661,25 @@ class BipedFBIK {
         //     .setTargetDirection( effectorDirection, poleDirection );
 
 
-        // // LEGS
-        // rig.legL?.solver
-        //     .setTargetPosition( this.legL.getTailPosition() )
-        //     .setTargetPole( this.legL.getPoleDirection( poleDirection ) );
+        // LEGS
+        if(rig.leftLeg) {
+            rig.leftLeg.solver.setTargetPosition( this.leftLeg.getTailPosition() );
+            rig.leftLeg.solver.setTargetPole( this.leftLeg.getPoleDirection( poleDirection ) );
+        }
+        if(rig.rightLeg) {
+            rig.rightLeg.solver.setTargetPosition( this.rightLeg.getTailPosition() );
+            rig.rightLeg.solver.setTargetPole( this.rightLeg.getPoleDirection( poleDirection ) );
+        }
 
-        // rig.legR?.solver
-        //     .setTargetPosition( this.legR.getTailPosition() )
-        //     .setTargetPole( this.legR.getPoleDirection( poleDirection ) );
+        this.leftFoot.getAxis( effectorDirection, poleDirection );
+        if(rig.leftFoot) {
+            rig.leftFoot.solver.setTargetDirection( effectorDirection, poleDirection );
+        }
 
-        // this.footL.getAxis( effectorDirection, poleDirection );
-        // rig.footL?.solver
-        //     .setTargetDirection( effectorDirection, poleDirection );
-
-        // this.footR.getAxis( effectorDirection, poleDirection );
-        // rig.footR?.solver
-        //     .setTargetDirection( effectorDirection, poleDirection );
+        this.rightFoot.getAxis( effectorDirection, poleDirection );
+        if(rig.rightFoot) {
+            rig.rightFoot.solver.setTargetDirection( effectorDirection, poleDirection );
+        }
 
 
         // SPINE
